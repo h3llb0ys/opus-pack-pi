@@ -3,10 +3,11 @@
 
   "mcpServers": {
     "ctm": {
-      "_comment": "claude-total-memory через pi-mcp-adapter. Lazy = подсоединяется при первом вызове, idleTimeout убивает после 60с простоя.",
-      "command": "/Users/smirnov_as/extra/mcp/claude-total-memory/.venv/bin/claude-total-memory",
-      "args": [],
+      "_comment": "claude-total-memory через pi-mcp-adapter. Lazy = подсоединяется при первом вызове, idleTimeout убивает после 60с простоя. Запускаем модуль напрямую через python -m, без entry-point бинаря.",
+      "command": "/Users/smirnov_as/extra/mcp/claude-total-memory/.venv/bin/python",
+      "args": ["-m", "claude_total_memory.server"],
       "env": {},
+      "cwd": "/Users/smirnov_as/extra/mcp/claude-total-memory",
       "lifecycle": "lazy",
       "idleTimeout": 60,
       "toolPrefix": "server"
