@@ -95,8 +95,8 @@ export default function (pi: ExtensionAPI) {
 		if (executionMode && todoItems.length > 0) {
 			ctx.ui.setWidget("plan-todos", todoItems.map((t) =>
 				t.completed
-					? ctx.ui.theme.fg("success", "☑ ") + ctx.ui.theme.fg("muted", ctx.ui.theme.strikethrough(t.text))
-					: ctx.ui.theme.fg("muted", "☐ ") + t.text,
+					? ctx.ui.theme.fg("success", "██ ") + ctx.ui.theme.fg("muted", ctx.ui.theme.strikethrough(t.text))
+					: ctx.ui.theme.fg("dim", "░░ ") + t.text,
 			));
 		} else {
 			ctx.ui.setWidget("plan-todos", undefined);

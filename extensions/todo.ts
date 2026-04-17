@@ -27,11 +27,11 @@ const renderWidget = (ctx: ExtensionContext, items: TodoEntry[]) => {
 		return;
 	}
 	const done = items.filter((t) => t.done).length;
-	ctx.ui.setStatus("todo", ctx.ui.theme.fg("accent", `☑ ${done}/${items.length}`));
+	ctx.ui.setStatus("todo", ctx.ui.theme.fg("accent", `${done}/${items.length}`));
 	ctx.ui.setWidget("todo", items.map((t) =>
 		t.done
-			? ctx.ui.theme.fg("success", "☑ ") + ctx.ui.theme.fg("muted", ctx.ui.theme.strikethrough(t.text))
-			: ctx.ui.theme.fg("dim", "☐ ") + t.text,
+			? ctx.ui.theme.fg("success", "██ ") + ctx.ui.theme.fg("muted", ctx.ui.theme.strikethrough(t.text))
+			: ctx.ui.theme.fg("dim", "░░ ") + t.text,
 	));
 };
 
