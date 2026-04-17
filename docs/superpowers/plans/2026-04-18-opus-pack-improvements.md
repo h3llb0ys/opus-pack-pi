@@ -491,14 +491,19 @@ git commit -m "feat: add granular permissions extension (allow/confirm/deny per 
 
 ---
 
-### Task 3: Todo Tracker Extension
+### Task 3: Todo Tracker Extension (with enforcement)
 
 **Files:**
 - Create: `extensions/todo.ts`
 
-- [ ] **Step 1: Write the todo tracker extension**
+- [ ] **Step 1: Write the todo tracker extension with enforcement**
 
-Registers a `todo` tool the LLM can call, plus `/todo` command for user. State in `pi.appendEntry`. Widget shows checklist.
+Registers a `todo` tool the LLM can call, plus `/todo` command for user. Widget shows checklist with `☐/☑` and strikethrough.
+
+**Enforcement mechanism (option A):**
+1. **`before_agent_start`** — injects a system-level message instructing the model to ALWAYS plan with `todo add` before modifying files.
+2. **`tool_call` nag** — on the first `edit`/`write`/`bash` (if it looks modifying) in an agent run where `todo add` was never called, injects a steering message: "Сначала создай план через todo add, потом выполняй". Only nags once per agent run.
+3. **`todo add` auto-complete hint** — when model calls `todo complete`, auto-advance widget to next pending item.
 
 ```typescript
 /**
@@ -508,6 +513,9 @@ Registers a `todo` tool the LLM can call, plus `/todo` command for user. State i
  * Command /todo for user inspection.
  * Widget shows active tasks above editor.
  * State persists via appendEntry for crash resilience.
+ *
+ * Enforcement: before_agent_start injects "plan first" instruction.
+ * First modifying tool_call without prior todo add → steering nag.
  */
 
 import { Type } from "@sinclair/typebox";
@@ -535,11 +543,31 @@ const renderWidget = (ctx: ExtensionContext, items: TodoEntry[]) => {
 	));
 };
 
+const MODIFYING_TOOLS = new Set(["edit", "write"]);
+
+const MODIFYING_BASH_PATTERNS = [
+	/\bgit\s+(add|commit|push|merge|rebase|reset|checkout|stash|cherry-pick|revert)/i,
+	/\brm\s/i, /\bmv\s/i, /\bcp\s/i, /\bmkdir\s/i,
+	/\b(npm|yarn|pnpm|pip|cargo|go|brew)\s+(install|add|remove|update)/i,
+];
+
+const isModifyingBash = (cmd: string): boolean =>
+	MODIFYING_BASH_PATTERNS.some((p) => p.test(cmd));
+
 export default function (pi: ExtensionAPI) {
 	let items: TodoEntry[] = [];
 	let nextId = 1;
 
+	// Enforcement state per agent run
+	let todoWasUsed = false;
+	let hasNagged = false;
+
 	const persist = () => pi.appendEntry("todo", { items, nextId });
+
+	const resetEnforcement = () => {
+		todoWasUsed = items.length > 0; // pre-existing todos count
+		hasNagged = false;
+	};
 
 	pi.on("session_start", async (_event, ctx) => {
 		items = [];
@@ -553,6 +581,57 @@ export default function (pi: ExtensionAPI) {
 			nextId = last.data.nextId ?? items.length + 1;
 		}
 		renderWidget(ctx, items);
+		resetEnforcement();
+	});
+
+	// Hard enforcement: inject "plan first" instruction at the start of every agent run
+	pi.on("before_agent_start", async () => {
+		return {
+			message: {
+				customType: "todo-enforcement",
+				content: [
+					"[TODO ENFORCEMENT]",
+					"Before modifying ANY files, you MUST:",
+					"1. Call `todo add` for each step of your plan (2+ steps)",
+					"2. Then execute steps one by one, calling `todo complete` after each",
+					"",
+					"Exceptions (skip todo): single-file fix, typo correction, answering a question.",
+					"For everything else: todo first, execute second.",
+			].join("\n"),
+				display: false,
+			},
+		};
+	});
+
+	// Nag on first modifying tool call without prior todo add
+	pi.on("tool_call", async (event, ctx) => {
+		if (hasNagged || todoWasUsed) return;
+
+		// Track that todo was used (before the nag check)
+		if (event.toolName === "todo") {
+			todoWasUsed = true;
+			return;
+		}
+
+		// Check if this is a modifying tool call
+		let isModifying = MODIFYING_TOOLS.has(event.toolName);
+		if (event.toolName === "bash") {
+			const cmd = String((event.input as { command?: string }).command ?? "");
+			isModifying = isModifyingBash(cmd);
+		}
+
+		if (!isModifying) return;
+
+		// First modifying call without todo — nag once
+		hasNagged = true;
+		pi.sendMessage(
+			{
+				customType: "todo-nag",
+				content: "⚠️ Ты начал менять код без плана. Сначала вызови `todo add` для каждого шага, потом выполняй с `todo complete`.",
+				display: true,
+			},
+			{ deliverAs: "steer" },
+		);
 	});
 
 	pi.registerTool({
@@ -591,7 +670,11 @@ export default function (pi: ExtensionAPI) {
 					target.done = true;
 					persist();
 					renderWidget(ctx, items);
-					return { content: [{ type: "text", text: `Completed #${target.id}: ${target.text}` }], details: { items } };
+
+					// Auto-advance: hint at next pending item
+					const next = items.find((t) => !t.done);
+					const suffix = next ? ` Next: #${next.id} — ${next.text}` : " All done!";
+					return { content: [{ type: "text", text: `Completed #${target.id}: ${target.text}.${suffix}` }], details: { items } };
 				}
 				case "clear": {
 					items = items.filter((t) => !t.done);
@@ -616,11 +699,11 @@ export default function (pi: ExtensionAPI) {
 }
 ```
 
-- [ ] **Step 2: Commit todo tracker**
+- [ ] **Step 2: Commit todo tracker with enforcement**
 
 ```bash
 git add extensions/todo.ts
-git commit -m "feat: add todo tracker extension (tool + widget + /todo command)"
+git commit -m "feat: add todo tracker with before_agent_start enforcement + steering nag"
 ```
 
 ---
