@@ -11,6 +11,10 @@ Opinionated bundle для запуска Claude Opus 4.7 внутри [pi-coding
 | `plan-mode.ts` | `/plan` + `Ctrl+Alt+P` — read-only exploration, numbered plan, execute с `[DONE:N]` tracking. Флаг `--plan`. |
 | `permissions.ts` | Granular allow/confirm/deny per tool + path/pattern. Config в `opus-pack.permissions`. Усиливает safe-deny. |
 | `todo.ts` | `todo` tool + `/todo` command — lightweight task list для multi-step agent work. Widget + status bar. |
+| `diff.ts` | `/diff` — обзор изменений агента: `git diff HEAD --stat` + интерактивный пикер файла с полным diff. |
+| `rewind.ts` | `/rewind` — undo/rollback: discard changes, undo last commit, reset к произвольному коммиту или stash. |
+| `cost.ts` | `/cost` — дашборд token usage: текущая сессия, за сегодня, за 7 дней с breakdown по дням. |
+| `session-summary.ts` | Авто-резюме при завершении agent'а (если ≥3 tool calls): сколько файлов изменено, команд запущено, ошибок. |
 | `smart-compact.ts` | Custom compaction hints из `.pi/compact-hints.md` или `opus-pack.compactHints`. Сохраняет ключевой контекст при compact. |
 | `desktop-notify.ts` | OS notification (macOS/Linux) по завершении agent'а. Настройка порога длительности + звук. `/notify-test`. |
 | `iteration-guard.ts` | Cap на turns в одном agent-run'е (default 40). `/continue` → `+20`. Флаг `--max-turns=<N>`. |
