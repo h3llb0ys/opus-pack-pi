@@ -6,7 +6,7 @@
  * Widget shows active tasks above editor.
  * State persists via appendEntry for crash resilience.
  *
- * Enforcement: before_agent_start injects "plan first" instruction.
+ * Enforcement: first modifying tool_call without prior todo add → steering nag.
  * First modifying tool_call without prior todo add → steering nag.
  */
 
@@ -76,25 +76,7 @@ export default function (pi: ExtensionAPI) {
 		resetEnforcement();
 	});
 
-	// Hard enforcement: inject "plan first" instruction at the start of every agent run
-	pi.on("before_agent_start", async () => {
-		return {
-			message: {
-				customType: "todo-enforcement",
-				content: [
-					"[TODO ENFORCEMENT]",
-					"Before modifying ANY files, you MUST:",
-					"1. Call `todo add` for each step of your plan (2+ steps)",
-					"2. Then execute steps one by one, calling `todo complete` after each",
-					"",
-					"Exceptions (skip todo): single-file fix, typo correction, answering a question.",
-					"For everything else: todo first, execute second.",
-				].join("\n"),
-				display: false,
-			},
-		};
-	});
-
+	// Nag on first modifying tool call without prior todo add
 	// Nag on first modifying tool call without prior todo add
 	pi.on("tool_call", async (event, ctx) => {
 		if (hasNagged || todoWasUsed) return;
