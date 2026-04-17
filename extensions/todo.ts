@@ -7,7 +7,6 @@
  * State persists via appendEntry for crash resilience.
  *
  * Enforcement: first modifying tool_call without prior todo add → steering nag.
- * First modifying tool_call without prior todo add → steering nag.
  */
 
 import { Type } from "@sinclair/typebox";
@@ -28,7 +27,13 @@ const renderWidget = (ctx: ExtensionContext, items: TodoEntry[]) => {
 	}
 	const done = items.filter((t) => t.done).length;
 	ctx.ui.setStatus("todo", ctx.ui.theme.fg("accent", `${done}/${items.length}`));
-	ctx.ui.setWidget("todo", items.map((t) =>
+
+	// Sort: pending first, done last — so truncation hides completed items
+	const sorted = [
+		...items.filter((t) => !t.done),
+		...items.filter((t) => t.done),
+	];
+	ctx.ui.setWidget("todo", sorted.map((t) =>
 		t.done
 			? ctx.ui.theme.fg("success", "■") + " " + ctx.ui.theme.fg("muted", ctx.ui.theme.strikethrough(t.text))
 			: ctx.ui.theme.fg("dim", "□") + " " + t.text,
@@ -76,7 +81,6 @@ export default function (pi: ExtensionAPI) {
 		resetEnforcement();
 	});
 
-	// Nag on first modifying tool call without prior todo add
 	// Nag on first modifying tool call without prior todo add
 	pi.on("tool_call", async (event, ctx) => {
 		if (hasNagged || todoWasUsed) return;
@@ -127,6 +131,13 @@ export default function (pi: ExtensionAPI) {
 			switch (params.action) {
 				case "add": {
 					if (!params.text) throw new Error("todo add requires 'text'");
+
+					// If all existing items are done, clear them before adding new plan
+					if (items.length > 0 && items.every((t) => t.done)) {
+						items = [];
+						nextId = 1;
+					}
+
 					const entry: TodoEntry = { id: String(nextId++), text: params.text, done: false };
 					items.push(entry);
 					persist();
