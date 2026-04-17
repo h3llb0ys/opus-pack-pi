@@ -27,7 +27,28 @@
     "max-turns": 40,
     "safe-deny": {
       "enabled": true
-    }
+    },
+    "permissions": {
+      "_comment": "Granular allow/confirm/deny rules. First match wins. Augments safe-deny (hardcoded net).",
+      "default": "allow",
+      "rules": [
+        { "tool": "bash", "pattern": "sudo *", "action": "confirm" },
+        { "tool": "edit", "path": ".github/**", "action": "confirm" },
+        { "tool": "write", "path": "*.env", "action": "deny" }
+      ]
+    },
+    "desktopNotify": {
+      "_comment": "OS notification on agent completion.",
+      "enabled": true,
+      "minDuration": 10,
+      "sound": true
+    },
+    "compactHints": [
+      "_comment: list of topics to preserve during compaction",
+      "Current file being edited and its recent changes",
+      "Test results and error messages",
+      "Architecture decisions made in this session"
+    ]
   },
 
   "packages": [
