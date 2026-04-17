@@ -37,7 +37,12 @@ const loadHints = (cwd: string): string | null => {
 };
 
 export default function (pi: ExtensionAPI) {
+	let compactStartTime = 0;
+
 	pi.on("session_before_compact", async (event, ctx) => {
+		compactStartTime = Date.now();
+		ctx.ui.setStatus("compact", ctx.ui.theme.fg("warning", "⏳ compacting..."));
+
 		const hints = loadHints(ctx.cwd);
 		if (!hints) return;
 
@@ -50,14 +55,16 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("session_compact", async (event, ctx) => {
+		ctx.ui.setStatus("compact", undefined);
 		if (event.fromExtension) return;
 		const compaction = event.compactionEntry;
 		if (!compaction) return;
 
+		const elapsed = ((Date.now() - compactStartTime) / 1000).toFixed(1);
 		const tokensBefore = compaction.tokensBefore ?? 0;
 		const summaryLen = typeof compaction.summary === "string" ? compaction.summary.length : 0;
 		ctx.ui.notify(
-			`Compaction done: ${tokensBefore.toLocaleString()} tokens before, ~${summaryLen.toLocaleString()} chars summary.`,
+			`✓ Compacted in ${elapsed}s: ${tokensBefore.toLocaleString()} tokens → ~${summaryLen.toLocaleString()} chars summary.`,
 			"info",
 		);
 	});
