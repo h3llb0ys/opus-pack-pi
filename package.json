@@ -1,0 +1,20 @@
+{
+  "name": "opus-pack-pi",
+  "version": "0.1.0",
+  "description": "Opinionated bundle for running Claude Opus inside pi-coding-agent: safety gates, hook bridge, status indicator, agent profiles.",
+  "keywords": ["pi-package", "pi-coding-agent", "claude-opus"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/h3llb0ys/opus-pack-pi.git"
+  },
+  "pi": {
+    "extensions": ["./extensions"],
+    "skills": ["./skills"]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-ai": "*",
+    "@sinclair/typebox": "*"
+  }
+}

@@ -1,0 +1,76 @@
+/**
+ * Status Indicator — /status slash + persistent footer counter.
+ *
+ * Rolls up: loaded extensions, skills, prompts, MCP tool count, hooks,
+ * current model + thinking level, session turns + cost + ctx usage.
+ *
+ * pi out-of-the-box only renders these blocks at session start. /status
+ * lets you re-check at any moment; footer shows compact ext/skills/mcp.
+ */
+
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+
+const renderFooter = (ext: number, skills: number, mcp: number) =>
+	`ext:${ext} skills:${skills} mcp:${mcp}`;
+
+export default function (pi: ExtensionAPI) {
+	const refreshFooter = (ctx: ExtensionContext) => {
+		try {
+			const cmds = pi.getCommands();
+			const ext = cmds.filter((c) => c.source === "extension").length;
+			const skills = cmds.filter((c) => c.source === "skill").length;
+			const tools = pi.getAllTools();
+			const mcp = tools.filter((t) => /^mcp(_|$)/i.test(t.name)).length;
+			ctx.ui.setStatus("opus-pack", renderFooter(ext, skills, mcp));
+		} catch {
+			// pi internals may not be ready; ignore.
+		}
+	};
+
+	pi.on("session_start", async (_event, ctx) => {
+		refreshFooter(ctx);
+	});
+
+	pi.on("turn_end", async (_event, ctx) => {
+		refreshFooter(ctx);
+	});
+
+	pi.registerCommand("status", {
+		description: "Show pi status: extensions, skills, MCP tools, model, session, hooks",
+		handler: async (_args, ctx) => {
+			const cmds = pi.getCommands();
+			const tools = pi.getAllTools();
+			const active = new Set(pi.getActiveTools());
+
+			const skills = cmds.filter((c) => c.source === "skill");
+			const exts = cmds.filter((c) => c.source === "extension");
+			const prompts = cmds.filter((c) => c.source === "prompt");
+			const mcpTools = tools.filter((t) => /^mcp(_|$)/i.test(t.name));
+			const builtinTools = tools.filter((t) => !/^mcp(_|$)/i.test(t.name) && !exts.some((e) => e.name === t.name));
+
+			const model = ctx.model;
+			const usage = ctx.getContextUsage();
+			const usagePct = usage?.percent ?? undefined;
+			let turns: number | string = "?";
+			try {
+				const entries = ctx.sessionManager?.getEntries?.() ?? [];
+				turns = entries.filter((e: { type?: string }) => e?.type === "message").length;
+			} catch { /* ignore */ }
+
+			const lines = [
+				"═ pi status ═",
+				`Model        : ${(model as { id?: string } | undefined)?.id ?? "unknown"}  (thinking: ${pi.getThinkingLevel?.() ?? "n/a"})`,
+				`Session      : ${turns} entries${usagePct !== undefined ? `, ${usagePct}% ctx` : ""}`,
+				`Extensions   : ${exts.length} commands from extensions`,
+				`Skills       : ${skills.length} loaded`,
+				`Prompts      : ${prompts.length} loaded`,
+				`MCP tools    : ${mcpTools.length}`,
+				`Tools active : ${active.size} / ${tools.length} (${builtinTools.length} builtin + ${exts.length} ext + ${mcpTools.length} mcp)`,
+				`cwd          : ${ctx.cwd}`,
+			];
+
+			ctx.ui.notify(lines.join("\n"), "info");
+			refreshFooter(ctx);
+		},
+	});
+}

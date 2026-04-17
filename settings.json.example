@@ -1,0 +1,41 @@
+{
+  "_comment": "Эталон. install.sh мерджит ТОЛЬКО mcpServers, hooks, opus-pack, packages — не перезаписывает чужие ключи.",
+
+  "mcpServers": {
+    "ctm": {
+      "_comment": "claude-total-memory через pi-mcp-adapter. Lazy = подсоединяется при первом вызове, idleTimeout убивает после 60с простоя.",
+      "command": "/Users/smirnov_as/extra/mcp/claude-total-memory/.venv/bin/claude-total-memory",
+      "args": [],
+      "env": {},
+      "lifecycle": "lazy",
+      "idleTimeout": 60,
+      "toolPrefix": "server"
+    }
+  },
+
+  "hooks": {
+    "_comment": "Формат 1:1 с Claude Code. Hook-bridge.ts читает этот блок. Можно копипастить из ~/.claude/settings.json.",
+    "PreToolUse": [],
+    "PostToolUse": [],
+    "SessionStart": [],
+    "Stop": []
+  },
+
+  "opus-pack": {
+    "_comment": "Флаги opus-pack-pi extensions.",
+    "max-turns": 40,
+    "safe-deny": {
+      "enabled": true
+    }
+  },
+
+  "packages": [
+    {
+      "source": "git:github.com/obra/superpowers",
+      "_comment": "Только skills/. Отбрасываем CC-only commands/agents/hooks (формат не совместим с pi).",
+      "skills": ["skills/*/SKILL.md"],
+      "extensions": [],
+      "prompts": []
+    }
+  ]
+}
