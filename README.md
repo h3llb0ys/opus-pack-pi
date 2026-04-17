@@ -11,6 +11,7 @@ Opinionated bundle для запуска Claude Opus 4.7 внутри [pi-coding
 | `iteration-guard.ts` | Cap на turns в одном agent-run'е (default 40). `/continue` → `+20`. Флаг `--max-turns=<N>`. |
 | `safe-deny.ts` | Без интерактивных confirm-диалогов блокирует `rm -rf /`, `git push --force` на main, `--no-verify` commits, запись в `~/.claude/`, `.env`, `*.pem`, `~/.ssh`. Bypass: `PI_OPUS_PACK_UNSAFE=1`. |
 | `status.ts` | Slash `/status` — сводка (extensions, skills, prompts, MCP tools, model, ctx usage). Footer: `ext:N skills:M mcp:K`. |
+| `list-resources.ts` | Slashes `/skills`, `/extensions`, `/prompts` — listing с описаниями (как в Claude Code). |
 | `hook-bridge.ts` | Читает блок `hooks` из `settings.json` в формате Claude Code, запускает shell-команды на pi-события (`PreToolUse` / `PostToolUse` / `SessionStart` / `Stop` / `UserPromptSubmit` / `PreCompact`). Позволяет копипастить CC-конфиги и сторонние hook-скрипты. |
 
 ### Vendored extensions (из `pi-mono/examples/extensions/`)
