@@ -94,7 +94,13 @@ else
 	ok "$APPEND_SYS дописан"
 fi
 
-# 7. claude-total-memory health check
+# 7. Runtime dependencies for extensions
+if [ ! -d "$REPO_DIR/node_modules/minimatch" ]; then
+    echo "[install] Installing runtime dependencies..."
+    (cd "$REPO_DIR" && npm install --omit=dev) 2>/dev/null || warn "npm install failed — permissions extension may not load"
+fi
+
+# 8. claude-total-memory health check
 CTM_BIN="$HOME/extra/mcp/claude-total-memory/.venv/bin/claude-total-memory"
 if [ -x "$CTM_BIN" ]; then
 	ok "claude-total-memory MCP server найден: $CTM_BIN"
@@ -103,7 +109,7 @@ else
 	echo "       fix: cd ~/extra/mcp/claude-total-memory && uv pip install -e ."
 fi
 
-# 8. Final report
+# 9. Final report
 printf "\n═══ Opus Pack установлен ═══\n"
 echo "Repo:      $REPO_DIR"
 echo "Settings:  $SETTINGS"
