@@ -31,6 +31,7 @@ Opinionated bundle для запуска Claude Opus 4.7 внутри [pi-coding
 | `ask-user.ts` | LLM-tool `ask_user(question, choices?)` для clarifying questions. Non-interactive → error, fallback на best judgement. |
 | `resume.ts` | `/resume` — switch session, `/fork` — branch от user-message, `/tree` — ASCII session tree. |
 | `pi-search.ts` | `/pi-search [query]` — GitHub topic `pi-package` discovery + interactive install + `/reload`. Cache 1h. |
+| `mcp-compress.ts` | Схлопывает verbose MCP tool results в 1-строчные summaries (`ok  memory_save: saved, id=208, deduped`). Recognises saved/id/deduplicated/episode_id/count/error. Config `opus-pack.mcpCompress` (prefixes, maxLineLen, whitelist). |
 
 ### Vendored extensions (из `pi-mono/examples/extensions/`)
 

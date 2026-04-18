@@ -58,6 +58,13 @@
       "includeWalk": true,
       "maxTotalChars": 20000
     },
+    "mcpCompress": {
+      "_comment": "Collapse verbose MCP tool results to a single line per call.",
+      "enabled": true,
+      "prefixes": ["mcp_", "mcp__", "server_"],
+      "maxLineLen": 160,
+      "whitelist": []
+    },
     "piSearch": {
       "_comment": "Community extension discovery via GitHub topic:pi-package.",
       "enabled": true,
