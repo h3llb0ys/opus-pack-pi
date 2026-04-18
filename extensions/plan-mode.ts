@@ -10,6 +10,7 @@ import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Key } from "@mariozechner/pi-tui";
+import { Type } from "@sinclair/typebox";
 
 const PLAN_MODE_TOOLS = ["read", "bash", "grep", "find", "ls"];
 const NORMAL_MODE_TOOLS = ["read", "bash", "edit", "write"];
@@ -86,11 +87,11 @@ export default function (pi: ExtensionAPI) {
 	const updateStatus = (ctx: ExtensionContext) => {
 		if (executionMode && todoItems.length > 0) {
 			const done = todoItems.filter((t) => t.completed).length;
-			ctx.ui.setStatus("plan-mode", ctx.ui.theme.fg("accent", `📋 ${done}/${todoItems.length}`));
+			ctx.ui.setStatus("01-plan", ctx.ui.theme.fg("accent", `📋 ${done}/${todoItems.length}`));
 		} else if (planModeEnabled) {
-			ctx.ui.setStatus("plan-mode", ctx.ui.theme.fg("warning", "⏸ plan"));
+			ctx.ui.setStatus("01-plan", ctx.ui.theme.fg("warning", "⏸ plan"));
 		} else {
-			ctx.ui.setStatus("plan-mode", undefined);
+			ctx.ui.setStatus("01-plan", undefined);
 		}
 		if (executionMode && todoItems.length > 0) {
 			ctx.ui.setWidget("plan-todos", todoItems.map((t) =>
@@ -140,6 +141,68 @@ export default function (pi: ExtensionAPI) {
 	pi.registerShortcut(Key.ctrlAlt("p"), {
 		description: "Toggle plan mode",
 		handler: async (ctx) => togglePlanMode(ctx),
+	});
+
+	// Explicit LLM-callable exit: model proposes the full plan, user confirms,
+	// execution starts immediately. Avoids relying on [DONE:N] text parsing.
+	pi.registerTool({
+		name: "exit_plan_mode",
+		label: "Exit plan mode",
+		description:
+			"Call when you have finished the plan and are ready to execute. " +
+			"Pass the plan as a numbered list (1. step one, 2. step two). " +
+			"The user is asked to approve; on approval plan mode exits and execution starts.",
+		promptSnippet: "exit_plan_mode(plan) — finish planning, request user approval to execute",
+		parameters: Type.Object({
+			plan: Type.String({ description: "The final plan as a numbered markdown list." }),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			if (!planModeEnabled) {
+				return {
+					content: [{ type: "text", text: "refused: not currently in plan mode" }],
+					isError: true,
+					details: { approved: false },
+				};
+			}
+			const extracted = extractTodoItems(`Plan:\n${params.plan}`);
+			if (extracted.length > 0) todoItems = extracted;
+
+			if (!ctx.hasUI) {
+				// Non-interactive: auto-approve.
+				planModeEnabled = false;
+				executionMode = todoItems.length > 0;
+				pi.setActiveTools(NORMAL_MODE_TOOLS);
+				updateStatus(ctx);
+				persist();
+				return {
+					content: [{ type: "text", text: `plan accepted (non-interactive). ${todoItems.length} steps. execute now.` }],
+					isError: false,
+					details: { approved: true, steps: todoItems.length },
+				};
+			}
+
+			const approved = await ctx.ui.confirm(
+				"Exit plan mode and execute?",
+				`${todoItems.length} step${todoItems.length === 1 ? "" : "s"} queued.`,
+			);
+			if (!approved) {
+				return {
+					content: [{ type: "text", text: "user declined execution. stay in plan mode." }],
+					isError: false,
+					details: { approved: false },
+				};
+			}
+			planModeEnabled = false;
+			executionMode = todoItems.length > 0;
+			pi.setActiveTools(NORMAL_MODE_TOOLS);
+			updateStatus(ctx);
+			persist();
+			return {
+				content: [{ type: "text", text: `plan approved. proceed with step 1. mark progress with [DONE:n] markers.` }],
+				isError: false,
+				details: { approved: true, steps: todoItems.length },
+			};
+		},
 	});
 
 	pi.on("tool_call", async (event) => {

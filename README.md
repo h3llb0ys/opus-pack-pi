@@ -8,19 +8,21 @@ Opinionated bundle для запуска Claude Opus 4.7 внутри [pi-coding
 
 | Extension | Что делает |
 |---|---|
-| `plan-mode.ts` | `/plan` + `Ctrl+Alt+P` — read-only exploration, numbered plan, execute с `[DONE:N]` tracking. Флаг `--plan`. |
+| `plan-mode.ts` | `/plan` + `Ctrl+Alt+P` — read-only exploration, numbered plan. LLM вызывает `exit_plan_mode(plan)` → confirm-dialog → execute с `[DONE:N]` tracking. Флаг `--plan`. |
 | `permissions.ts` | Granular allow/confirm/deny per tool + path/pattern. Config в `opus-pack.permissions`. Усиливает safe-deny. |
-| `todo.ts` | `todo` tool + `/todo` command — lightweight task list для multi-step agent work. Widget + status bar. |
+| `todo.ts` | `todo` tool (add/start/done/clear) + `/todo` command — task list с `in_progress` состоянием и single-active invariant (как CC TodoWrite). Widget + status bar. |
+| `log-tail.ts` | `log_tail` / `log_kill` / `log_ps` tools + `/bg` — pi-native long-running tasks. Opus detach'ит bash в `/tmp/pi-bg-<slug>.{log,pid}`, extension читает/убивает. Status bar: `bg:N`. |
 | `diff.ts` | `/diff` — обзор изменений агента: `git diff HEAD --stat` + интерактивный пикер файла с полным diff. |
 | `rewind.ts` | `/rewind` — undo/rollback: discard changes, undo last commit, reset к произвольному коммиту или stash. |
 | `cost.ts` | `/cost` — дашборд token usage: текущая сессия, за сегодня, за 7 дней с breakdown по дням. |
 | `context.ts` | `/context` — что жрёт контекст: breakdown по типам (system/user/tool), топ tools, топ файлов. |
 | `session-summary.ts` | Авто-резюме при завершении agent'а (если ≥3 tool calls): сколько файлов изменено, команд запущено, ошибок. |
-| `smart-compact.ts` | Custom compaction hints из `.pi/compact-hints.md` или `opus-pack.compactHints`. Сохраняет ключевой контекст при compact. |
+| `smart-compact.ts` | `/compact <focus>` — inline focus перебивает `.pi/compact-hints.md` или `opus-pack.compactHints`. Сохраняет ключевой контекст при compact. |
+| `skills.ts` | Регистрирует `~/.claude/skills/` как skill root, чтоб CC-style скиллы подхватывались pi-native `<available_skills>` каталогом. |
 | `desktop-notify.ts` | OS notification (macOS/Linux) по завершении agent'а. Настройка порога длительности + звук. `/notify-test`. |
 | `iteration-guard.ts` | Cap на turns в одном agent-run'е (default 40). `/continue` → `+20`. Флаг `--max-turns=<N>`. |
 | `safe-deny.ts` | Без интерактивных confirm-диалогов блокирует `rm -rf /`, `git push --force` на main, `--no-verify` commits, запись в `~/.claude/`, `.env`, `*.pem`, `~/.ssh`. Bypass: `PI_OPUS_PACK_UNSAFE=1`. |
-| `status.ts` | Slash `/status` — сводка (extensions, skills, prompts, MCP tools, model, ctx usage). Footer: `ext:N skills:M mcp:K`. |
+| `status.ts` | Slash `/status` — сводка (extensions, skills, prompts, MCP tools, model, ctx usage). Live statusline: `cwd · branch · model · ctx:X%`. Footer: `ext:N skills:M mcp:K`. |
 | `list-resources.ts` | Slashes `/skills`, `/extensions`, `/prompts` — listing с описаниями (как в Claude Code). |
 | `hook-bridge.ts` | Читает блок `hooks` из `settings.json` в формате Claude Code, запускает shell-команды на pi-события (`PreToolUse` / `PostToolUse` / `SessionStart` / `Stop` / `UserPromptSubmit` / `PreCompact`). Позволяет копипастить CC-конфиги и сторонние hook-скрипты. |
 

@@ -23,9 +23,31 @@
 - `[DONE:N]` маркеры для tracking прогресса при execution.
 - Не пытайся менять код в plan mode — только анализ и планирование.
 
-### Tasks
-- Для multi-step задач (3+ шагов) —先用 `todo add` создай план, потом выполняй пошагово с `todo complete`.
+### Tasks (todo discipline)
+- Для multi-step задач (3+ шагов) — сначала `todo add` на каждый шаг, потом `todo start <id>` → работа → `todo done <id>`.
+- **Только одна задача в `in_progress` за раз.** При `todo start` предыдущая активная автоматически возвращается в `pending`.
 - Не используй todo для trivial задач (одна правка, один файл).
+
+### Long-running tasks
+- **One-shot (build/test/migration)** — `Agent(subagent_type: "verify", task: "run X, report pass/fail")`. Sonnet, возвращает структурированный результат.
+- **Watch / dev-server** — pi-native detach:
+  ```
+  cmd > /tmp/pi-bg-<slug>.log 2>&1 & echo $! > /tmp/pi-bg-<slug>.pid
+  ```
+  Следи через `log_tail("/tmp/pi-bg-<slug>.log", from=<offset>)` (инкремент по offset). Убивай через `log_kill(pid=<N>)`. Статус-бар показывает `bg:N` активных.
+- **Blocking bash** — default. Не делай `&` без pidfile — потеряешь control.
+- `/bg` — пикер живых задач: tail лога, kill, cleanup мёртвых pidfile'ов.
+
+### Skills
+- Каталог скиллов инжектится в system prompt автоматически (pi-native `<available_skills>`). Подхватывает `~/.claude/skills/*` тоже.
+- Когда description скилла совпадает с задачей — `read(<location>)` body ДО действия. Не угадывай содержимое скилла.
+
+### Plan Mode → Execute
+- `exit_plan_mode(plan)` tool — когда план готов: передай финальный numbered list, pi спросит подтверждение и переключит на execution.
+- `[DONE:n]` маркеры для tracking в execution mode остаются работающими (backward-compat).
+
+### Compact focus
+- `/compact <focus>` — inline focus перебивает `.pi/compact-hints.md`. Пример: `/compact preserve auth migration context`.
 
 ### Notifications
 - Desktop notification приходит автоматически по завершении долгих задач (>10s). Не проси пользователя проверить — он сам увидит.

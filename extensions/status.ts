@@ -13,6 +13,11 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 const renderFooter = (ext: number, skills: number, mcp: number) =>
 	`ext:${ext} skills:${skills} mcp:${mcp}`;
 
+const basename = (p: string) => {
+	const i = p.lastIndexOf("/");
+	return i >= 0 ? p.slice(i + 1) : p;
+};
+
 export default function (pi: ExtensionAPI) {
 	const refreshFooter = (ctx: ExtensionContext) => {
 		try {
@@ -21,18 +26,43 @@ export default function (pi: ExtensionAPI) {
 			const skills = cmds.filter((c) => c.source === "skill").length;
 			const tools = pi.getAllTools();
 			const mcp = tools.filter((t) => /^mcp(_|$)/i.test(t.name)).length;
-			ctx.ui.setStatus("opus-pack", renderFooter(ext, skills, mcp));
+			ctx.ui.setStatus("90-opus", renderFooter(ext, skills, mcp));
 		} catch {
 			// pi internals may not be ready; ignore.
 		}
 	};
 
+	const refreshStatusline = async (ctx: ExtensionContext) => {
+		try {
+			const model = (ctx.model as { id?: string } | undefined)?.id ?? "?";
+			const modelShort = model.replace(/^claude-/, "").split("-").slice(0, 2).join("-");
+			const usage = ctx.getContextUsage();
+			const pct = usage?.percent ?? null;
+			const ctxPart = pct !== null ? `ctx:${pct}%` : "";
+			let branch = "";
+			try {
+				const b = await pi.exec("git", ["symbolic-ref", "--short", "-q", "HEAD"], { cwd: ctx.cwd, timeout: 500 });
+				if (b.code === 0) branch = b.stdout.trim();
+			} catch { /* ignore */ }
+			const parts = [basename(ctx.cwd), branch, modelShort, ctxPart].filter(Boolean);
+			ctx.ui.setStatus("80-line", parts.join(" · "));
+		} catch {
+			// ignore
+		}
+	};
+
 	pi.on("session_start", async (_event, ctx) => {
 		refreshFooter(ctx);
+		void refreshStatusline(ctx);
 	});
 
 	pi.on("turn_end", async (_event, ctx) => {
 		refreshFooter(ctx);
+		void refreshStatusline(ctx);
+	});
+
+	pi.on("model_select", async (_event, ctx) => {
+		void refreshStatusline(ctx);
 	});
 
 	pi.registerCommand("status", {

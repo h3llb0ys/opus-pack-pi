@@ -38,24 +38,41 @@ const loadHints = (cwd: string): string | null => {
 
 export default function (pi: ExtensionAPI) {
 	let compactStartTime = 0;
+	// Inline focus set by /compact <focus> overrides loaded hints for next run.
+	let inlineFocus: string | null = null;
 
 	pi.on("session_before_compact", async (event, ctx) => {
 		compactStartTime = Date.now();
-		ctx.ui.setStatus("compact", ctx.ui.theme.fg("warning", "⏳ compacting..."));
+		ctx.ui.setStatus("04-compact", ctx.ui.theme.fg("warning", "⏳ compacting..."));
 
-		const hints = loadHints(ctx.cwd);
+		const focus = inlineFocus;
+		inlineFocus = null;
+		const hints = focus ?? loadHints(ctx.cwd);
 		if (!hints) return;
 
 		const existing = event.customInstructions ?? "";
-		const merged = existing
-			? `${existing}\n\n---\nCOMPACT HINTS (preserve these topics):\n${hints}`
-			: `COMPACT HINTS (preserve these topics in the summary):\n${hints}`;
+		const header = focus ? "COMPACT FOCUS (prioritize these topics in the summary)" : "COMPACT HINTS (preserve these topics)";
+		const merged = existing ? `${existing}\n\n---\n${header}:\n${hints}` : `${header}:\n${hints}`;
 
 		return { customInstructions: merged };
 	});
 
+	pi.registerCommand("compact", {
+		description: "Compact conversation. Optional inline focus: /compact preserve auth logic",
+		handler: async (args, ctx) => {
+			const focus = args?.trim();
+			if (focus) {
+				inlineFocus = focus;
+				ctx.ui.notify(`Compacting with focus: ${focus}`, "info");
+			} else {
+				ctx.ui.notify("Compacting (using configured hints)...", "info");
+			}
+			ctx.compact({});
+		},
+	});
+
 	pi.on("session_compact", async (event, ctx) => {
-		ctx.ui.setStatus("compact", undefined);
+		ctx.ui.setStatus("04-compact", undefined);
 		if (event.fromExtension) return;
 		const compaction = event.compactionEntry;
 		if (!compaction) return;
