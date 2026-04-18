@@ -65,6 +65,7 @@
       "maxLineLen": 160,
       "whitelist": []
     },
+    "_extensions_comment": "Per-extension on/off lives in ~/.pi/agent/settings.local.json under opus-pack.extensions.disabled — managed via /opus-pack.",
     "piSearch": {
       "_comment": "Community extension discovery via GitHub topic:pi-package.",
       "enabled": true,

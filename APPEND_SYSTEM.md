@@ -80,6 +80,13 @@
 - GITHUB_TOKEN env опционально, без него 60 rpm unauth.
 - Перед install — warn если stars <3 или last update >2 лет назад.
 
+### Extension toggles (opus-pack)
+- `/opus-pack` или `Ctrl+Alt+O` — модалка для включения/выключения любого расширения этого пакета.
+- State живёт в `~/.pi/agent/settings.local.json` под `opus-pack.extensions.disabled`.
+- Safe-deny требует подтверждение перед выключением (security-critical).
+- Save & Reload применяет без рестарта pi. Save без reload — применяется после `/reload` вручную.
+- Footer показывает `off:N` когда >0 extensions выключено.
+
 ### Notifications
 - Desktop notification приходит автоматически по завершении долгих задач (>10s). Не проси пользователя проверить — он сам увидит.
 
