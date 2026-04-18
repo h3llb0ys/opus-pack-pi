@@ -130,7 +130,9 @@ export default function (pi: ExtensionAPI) {
 			const done = todoItems.filter((t) => t.completed).length;
 			ctx.ui.setStatus("01-plan", ctx.ui.theme.fg("accent", `📋 ${done}/${todoItems.length}`));
 		} else if (planModeEnabled) {
-			ctx.ui.setStatus("01-plan", ctx.ui.theme.fg("warning", "⏸ plan"));
+			// CC-style: accent-coloured pause + label + shortcut hint.
+			const label = ctx.ui.theme.fg("accent", "⏸ plan mode on") + " " + ctx.ui.theme.fg("muted", "(cmd+p)");
+			ctx.ui.setStatus("01-plan", label);
 		} else {
 			ctx.ui.setStatus("01-plan", undefined);
 		}
