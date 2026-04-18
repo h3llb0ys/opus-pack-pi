@@ -13,11 +13,8 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { homedir } from "node:os";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { isExtensionDisabled } from "../lib/settings.js";
+import { isExtensionDisabled, loadOpusPackSection } from "../lib/settings.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -29,21 +26,7 @@ interface NotifyConfig {
 
 const DEFAULT_CONFIG: NotifyConfig = { enabled: true, minDuration: 10, sound: true };
 
-const loadConfig = (): NotifyConfig => {
-	try {
-		const raw = readFileSync(join(homedir(), ".pi/agent/settings.json"), "utf8");
-		const parsed = JSON.parse(raw);
-		const cfg = parsed?.["opus-pack"]?.["desktopNotify"];
-		if (!cfg || typeof cfg !== "object") return DEFAULT_CONFIG;
-		return {
-			enabled: cfg.enabled ?? DEFAULT_CONFIG.enabled,
-			minDuration: cfg.minDuration ?? DEFAULT_CONFIG.minDuration,
-			sound: cfg.sound ?? DEFAULT_CONFIG.sound,
-		};
-	} catch {
-		return DEFAULT_CONFIG;
-	}
-};
+const loadConfig = (): NotifyConfig => loadOpusPackSection("desktopNotify", DEFAULT_CONFIG);
 
 const isMac = process.platform === "darwin";
 
