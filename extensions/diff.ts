@@ -5,7 +5,7 @@
  * with full diff per file. Works with staged and unstaged changes.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { truncateHead, DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize } from "@mariozechner/pi-coding-agent";
 import { isExtensionDisabled } from "../lib/settings.js";
 
@@ -59,7 +59,7 @@ export default function (pi: ExtensionAPI) {
 	});
 }
 
-async function pickAndShow(pi: ExtensionAPI, ctx: any, files: string[], diffTarget: string) {
+async function pickAndShow(pi: ExtensionAPI, ctx: ExtensionContext, files: string[], diffTarget: string) {
 	// Add "all" and "done" options
 	const options = [
 		"📊 All files (combined)",

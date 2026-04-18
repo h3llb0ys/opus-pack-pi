@@ -6,7 +6,7 @@
  * Shows breakdown + usage % from ctx.getContextUsage().
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { isExtensionDisabled } from "../lib/settings.js";
 
 interface ContextBreakdown {
@@ -21,7 +21,7 @@ interface ContextBreakdown {
 	fileReadCounts: Record<string, number>;
 }
 
-const analyzeSession = (ctx: any): ContextBreakdown => {
+const analyzeSession = (ctx: ExtensionContext): ContextBreakdown => {
 	const bd: ContextBreakdown = {
 		systemPrompt: 0,
 		userMessages: 0,
