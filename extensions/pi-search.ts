@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import { loadOpusPackSection } from "../lib/settings.js";
 
 interface SearchConfig {
 	enabled: boolean;
@@ -44,15 +45,7 @@ interface GhSearchResponse {
 	items: GhRepo[];
 }
 
-const loadConfig = (): SearchConfig => {
-	try {
-		const raw = readFileSync(join(process.env.HOME ?? "", ".pi/agent/settings.json"), "utf8");
-		const parsed = JSON.parse(raw);
-		const user = parsed?.["opus-pack"]?.["piSearch"];
-		if (user && typeof user === "object") return { ...DEFAULT_CONFIG, ...user };
-	} catch { /* ignore */ }
-	return DEFAULT_CONFIG;
-};
+const loadConfig = (): SearchConfig => loadOpusPackSection("piSearch", DEFAULT_CONFIG);
 
 const cacheKey = (query: string): string => {
 	return createHash("sha1").update(query).digest("hex").slice(0, 16);
@@ -177,6 +170,14 @@ export default function (pi: ExtensionAPI) {
 				if (action.startsWith("📦")) {
 					if (!(await confirmSuspicious(ctx, repo))) {
 						ctx.ui.notify("install cancelled", "info");
+						continue;
+					}
+					// Surface a friendlier error if `pi` is not on PATH (rare but possible
+					// in Docker images, nix shells, or after npm-global tweaks).
+					const whichPi = await pi.exec("which", ["pi"], { timeout: 2000 });
+					if (whichPi.code !== 0) {
+						ctx.ui.notify("install skipped: `pi` is not on PATH. Run the install manually:\n" +
+							`  pi install git:github.com/${repo.full_name}`, "error");
 						continue;
 					}
 					ctx.ui.notify(`installing ${repo.full_name}...`, "info");
