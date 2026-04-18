@@ -15,6 +15,7 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 PI_DIR="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}"
 SETTINGS="$PI_DIR/settings.json"
+MCP_JSON="$PI_DIR/mcp.json"
 APPEND_SYS="$PI_DIR/APPEND_SYSTEM.md"
 
 c_info=$'\033[0;36m'; c_ok=$'\033[0;32m'; c_warn=$'\033[0;33m'; c_err=$'\033[0;31m'; c_off=$'\033[0m'
@@ -63,16 +64,14 @@ else
 	pi install "$REPO_DIR" || fail "не удалось зарегистрировать локальный путь $REPO_DIR"
 fi
 
-# 5. Merge settings.json
+# 5. Merge settings.json (без mcpServers — он живёт в mcp.json)
 if [ -f "$REPO_DIR/settings.json.example" ]; then
 	TMP="$(mktemp)"
 	jq --slurpfile patch "$REPO_DIR/settings.json.example" '
 		. as $base
-		| (.mcpServers // {}) as $bm
 		| (.hooks      // {}) as $bh
 		| (.packages   // []) as $bp
 		| $base
-		  + { mcpServers: ($bm + (($patch[0].mcpServers // {}) | with_entries(select(.key != "_comment")))) }
 		  + { hooks:      ($bh + (($patch[0].hooks      // {}) | with_entries(select(.key != "_comment")))) }
 		  + { "opus-pack": (($patch[0]."opus-pack" // {}) | with_entries(select(.key != "_comment"))) }
 		  + { packages:   ($bp + (
@@ -83,6 +82,22 @@ if [ -f "$REPO_DIR/settings.json.example" ]; then
 	ok "settings.json смержен"
 else
 	warn "settings.json.example не найден, пропускаю merge"
+fi
+
+# 5b. Merge mcp.json (для pi-mcp-adapter — отдельный файл)
+if [ -f "$REPO_DIR/mcp.json.example" ]; then
+	[ -f "$MCP_JSON" ] || echo '{}' > "$MCP_JSON"
+	TMP="$(mktemp)"
+	jq --slurpfile patch "$REPO_DIR/mcp.json.example" '
+		. as $base
+		| (.mcpServers // {}) as $bs
+		| (.settings   // {}) as $bset
+		| $base
+		  + { settings:   ($bset + (($patch[0].settings   // {}) | with_entries(select(.key != "_comment")))) }
+		  + { mcpServers: ($bs   + (($patch[0].mcpServers // {}) | with_entries(select(.key != "_comment"))
+		                                                         | map_values(with_entries(select(.key != "_comment"))))) }
+	' "$MCP_JSON" > "$TMP" && mv "$TMP" "$MCP_JSON"
+	ok "mcp.json смержен (для pi-mcp-adapter): $MCP_JSON"
 fi
 
 # 6. APPEND_SYSTEM.md
@@ -100,19 +115,21 @@ if [ ! -d "$REPO_DIR/node_modules/minimatch" ]; then
     (cd "$REPO_DIR" && npm install --omit=dev) 2>/dev/null || warn "npm install failed — permissions extension may not load"
 fi
 
-# 8. claude-total-memory health check
-CTM_BIN="$HOME/extra/mcp/claude-total-memory/.venv/bin/claude-total-memory"
-if [ -x "$CTM_BIN" ]; then
-	ok "claude-total-memory MCP server найден: $CTM_BIN"
+# 8. claude-total-memory health check (запускается через python src/server.py, не entry-point)
+CTM_PY="$HOME/extra/mcp/claude-total-memory/.venv/bin/python"
+CTM_SRV="$HOME/extra/mcp/claude-total-memory/src/server.py"
+if [ -x "$CTM_PY" ] && [ -f "$CTM_SRV" ]; then
+	ok "claude-total-memory MCP server найден: $CTM_PY $CTM_SRV"
 else
-	warn "claude-total-memory не найден по $CTM_BIN — MCP tools будут недоступны"
-	echo "       fix: cd ~/extra/mcp/claude-total-memory && uv pip install -e ."
+	warn "claude-total-memory не найден ($CTM_PY $CTM_SRV) — MCP tools будут недоступны"
+	echo "       fix: cd ~/extra/mcp/claude-total-memory && uv venv .venv && .venv/bin/pip install -r requirements.txt"
 fi
 
 # 9. Final report
 printf "\n═══ Opus Pack установлен ═══\n"
 echo "Repo:      $REPO_DIR"
 echo "Settings:  $SETTINGS"
+echo "MCP:       $MCP_JSON"
 echo "Append:    $APPEND_SYS"
 echo
 echo "Запусти 'pi' и /status — увидишь сводку. Footer: ext:N skills:M mcp:K"
