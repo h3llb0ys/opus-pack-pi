@@ -40,10 +40,11 @@ export default function (pi: ExtensionAPI) {
 				if (b.code === 0) branch = b.stdout.trim();
 			} catch { /* ignore */ }
 			const dir = basename(ctx.cwd) || ctx.cwd;
-			// CC-style: dir in default fg, branch dimmed in muted colour.
+			// CC-style: dir in accent (blue on default themes), branch muted.
+			const dirColoured = ctx.ui.theme.fg("accent", dir);
 			const label = branch
-				? `${dir} ${ctx.ui.theme.fg("muted", `(${branch})`)}`
-				: dir;
+				? `${dirColoured} ${ctx.ui.theme.fg("muted", `(${branch})`)}`
+				: dirColoured;
 			ctx.ui.setStatus("80-line", label);
 		} catch {
 			// ignore
