@@ -17,12 +17,12 @@
  */
 
 import { resolve } from "node:path";
-import { readFileSync, existsSync, writeFileSync, renameSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { minimatch } from "minimatch";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { isExtensionDisabled } from "../lib/settings.js";
+import { isExtensionDisabled, loadLocalSettingsRoot, loadSettingsRoot } from "../lib/settings.js";
 
 type Action = "allow" | "confirm" | "deny";
 
@@ -40,33 +40,23 @@ interface PermissionsConfig {
 	rules: Rule[];
 }
 
-const SETTINGS_PATH = join(homedir(), ".pi/agent/settings.json");
 const LOCAL_SETTINGS_PATH = join(homedir(), ".pi/agent/settings.local.json");
 
 const loadConfig = (): PermissionsConfig | null => {
-	try {
-		const raw = readFileSync(SETTINGS_PATH, "utf8");
-		const parsed = JSON.parse(raw);
-		const main = parsed?.["opus-pack"]?.["permissions"] ?? null;
-		// Merge in local overrides (allow-always rules persisted from prior prompts).
-		let localRules: Rule[] = [];
-		if (existsSync(LOCAL_SETTINGS_PATH)) {
-			try {
-				const localRaw = readFileSync(LOCAL_SETTINGS_PATH, "utf8");
-				const localParsed = JSON.parse(localRaw);
-				localRules = localParsed?.["opus-pack"]?.["permissions"]?.["rules"] ?? [];
-			} catch { /* ignore */ }
-		}
-		if (!main) {
-			return localRules.length > 0
-				? { default: "confirm", rules: localRules, interactive: true }
-				: null;
-		}
-		// Local rules evaluated FIRST (they were user's explicit persistent decisions).
-		return { ...main, rules: [...localRules, ...(main.rules ?? [])] };
-	} catch {
-		return null;
+	const parsed = loadSettingsRoot();
+	const main = parsed?.["opus-pack"]?.["permissions"] ?? null;
+	// Merge in local overrides (allow-always rules persisted from prior prompts).
+	const localParsed = loadLocalSettingsRoot();
+	const localRules: Rule[] = Array.isArray(localParsed?.["opus-pack"]?.["permissions"]?.["rules"])
+		? localParsed["opus-pack"]["permissions"]["rules"]
+		: [];
+	if (!main) {
+		return localRules.length > 0
+			? { default: "confirm", rules: localRules, interactive: true }
+			: null;
 	}
+	// Local rules evaluated FIRST (they were user's explicit persistent decisions).
+	return { ...main, rules: [...localRules, ...(main.rules ?? [])] };
 };
 
 type PersistResult =
