@@ -1,10 +1,16 @@
 /**
- * Safe-Deny — non-interactive guardrail.
+ * safe-deny — structured, non-interactive bash/fs guardrail.
  *
- * Blocks obviously dangerous bash commands and writes/edits to protected paths.
- * No askForUnknown — user is autonomous and confirm dialogs are noise.
+ * v2: argv-based tokenizer instead of whole-string regex. Splits the
+ * command on pipes/chains (|, ||, &&, ;), tokenizes each segment with
+ * respect for single/double quotes and backslash escapes, then checks
+ * the *head* of each segment against a denylist keyed by command name.
+ * This eliminates false-positives like `npm run rm-tmp` and `grep 'rm -rf' log`.
  *
- * To bypass: set env PI_OPUS_PACK_UNSAFE=1 (e.g. for one-shot scripts).
+ * Path protection (write/edit → .env, ~/.ssh, ~/.claude, *.pem, …) is unchanged.
+ *
+ * Bypass: env PI_OPUS_PACK_UNSAFE=1. Paranoid fallback when the tokenizer
+ * fails to parse the command cleanly (subshells, heredocs, etc).
  */
 
 import { homedir } from "node:os";
@@ -13,14 +19,166 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 const HOME = homedir();
 
-const BASH_DENY: { pattern: RegExp; reason: string }[] = [
-	{ pattern: /\brm\s+-rf?\s+\/(?!\S)/i, reason: "rm -rf / blocked" },
-	{ pattern: /\brm\s+-rf?\s+~(?:\/|$)/i, reason: "rm -rf ~ blocked" },
-	{ pattern: /\bgit\s+push\s+(?:-f|--force)\b.*\b(?:main|master|origin\/(?:main|master))\b/i, reason: "force push to main/master blocked" },
-	{ pattern: /\bgit\s+commit\b.*\B--no-verify\b/i, reason: "git commit --no-verify blocked (Opus Pack policy)" },
-	{ pattern: /\bchmod\b.*\b-R\b.*\b777\b/i, reason: "chmod -R 777 blocked" },
-	{ pattern: /\bsudo\s+rm\b/i, reason: "sudo rm blocked" },
-	{ pattern: /:\(\)\s*\{\s*:\|:&\s*\}\s*;:/, reason: "fork bomb blocked" },
+// ── Tokenizer ───────────────────────────────────────────────────────────────
+
+interface Segment {
+	argv: string[];
+	raw: string;
+}
+
+type TokenizeResult = { segments: Segment[]; dirty: false } | { segments: null; dirty: true; reason: string };
+
+const CHAIN_OPS = ["||", "&&", ";", "|"];
+
+const tokenizeCommand = (cmd: string): TokenizeResult => {
+	// Refuse to parse confusing shell constructs — mark dirty → paranoid path.
+	if (/\$\(|\`|<<-?\s*\w/.test(cmd)) {
+		return { segments: null, dirty: true, reason: "subshell or heredoc" };
+	}
+	const segments: Segment[] = [];
+	let buf = "";
+	let i = 0;
+	const len = cmd.length;
+	const pushSegment = () => {
+		const trimmed = buf.trim();
+		if (trimmed) {
+			const argv = splitArgv(trimmed);
+			if (argv === null) {
+				// Quote never closed.
+				return false;
+			}
+			segments.push({ argv, raw: trimmed });
+		}
+		buf = "";
+		return true;
+	};
+	outer: while (i < len) {
+		const rest = cmd.slice(i);
+		for (const op of CHAIN_OPS) {
+			if (rest.startsWith(op)) {
+				if (!pushSegment()) {
+					return { segments: null, dirty: true, reason: "unclosed quote" };
+				}
+				i += op.length;
+				continue outer;
+			}
+		}
+		// Background & (not part of &&): also a chain separator.
+		if (cmd[i] === "&" && cmd[i + 1] !== "&") {
+			if (!pushSegment()) return { segments: null, dirty: true, reason: "unclosed quote" };
+			i++;
+			continue;
+		}
+		// Quotes — skip over without breaking on chain ops inside.
+		if (cmd[i] === "'" || cmd[i] === '"') {
+			const quote = cmd[i];
+			buf += cmd[i++];
+			while (i < len && cmd[i] !== quote) {
+				if (cmd[i] === "\\" && i + 1 < len) buf += cmd[i++];
+				buf += cmd[i++];
+			}
+			if (i >= len) return { segments: null, dirty: true, reason: "unclosed quote" };
+			buf += cmd[i++]; // closing quote
+			continue;
+		}
+		if (cmd[i] === "\\" && i + 1 < len) {
+			buf += cmd[i++];
+			buf += cmd[i++];
+			continue;
+		}
+		buf += cmd[i++];
+	}
+	if (!pushSegment()) return { segments: null, dirty: true, reason: "unclosed quote" };
+	return { segments, dirty: false };
+};
+
+const splitArgv = (seg: string): string[] | null => {
+	const argv: string[] = [];
+	let cur = "";
+	let i = 0;
+	let started = false;
+	while (i < seg.length) {
+		const c = seg[i];
+		if (c === " " || c === "\t") {
+			if (started) { argv.push(cur); cur = ""; started = false; }
+			i++;
+			continue;
+		}
+		if (c === "'" || c === '"') {
+			started = true;
+			const quote = c;
+			i++;
+			while (i < seg.length && seg[i] !== quote) {
+				if (quote === '"' && seg[i] === "\\" && i + 1 < seg.length) { cur += seg[++i]; i++; continue; }
+				cur += seg[i++];
+			}
+			if (i >= seg.length) return null; // unclosed
+			i++; // closing
+			continue;
+		}
+		if (c === "\\" && i + 1 < seg.length) {
+			started = true;
+			cur += seg[++i];
+			i++;
+			continue;
+		}
+		started = true;
+		cur += c;
+		i++;
+	}
+	if (started) argv.push(cur);
+	return argv;
+};
+
+// ── Deny rules (structured) ─────────────────────────────────────────────────
+
+interface DenyRule {
+	/** Human reason. */
+	reason: string;
+	/** Checks a segment's argv. Returns true on match. */
+	match: (argv: string[], raw: string) => boolean;
+}
+
+const has = (argv: string[], flag: string) => argv.some((a) => a === flag);
+
+const DENY_RULES: DenyRule[] = [
+	{
+		reason: "rm -rf on / or ~",
+		match: (argv) => {
+			if (argv[0] !== "rm") return false;
+			const rf = argv.some((a) => /^-[a-z]*r[a-z]*f|^-[a-z]*f[a-z]*r/i.test(a) || a === "--recursive" || a === "--force");
+			if (!rf) return false;
+			return argv.some((a, i) => i > 0 && (a === "/" || a === "~" || a === "~/" || a === HOME || a === `${HOME}/`));
+		},
+	},
+	{
+		reason: "git push --force to main/master",
+		match: (argv) => {
+			if (argv[0] !== "git" || argv[1] !== "push") return false;
+			if (!(has(argv, "--force") || has(argv, "-f"))) return false;
+			return argv.some((a) => a === "main" || a === "master" || a === "origin/main" || a === "origin/master");
+		},
+	},
+	{
+		reason: "git commit --no-verify",
+		match: (argv) => argv[0] === "git" && argv[1] === "commit" && has(argv, "--no-verify"),
+	},
+	{
+		reason: "chmod -R 777",
+		match: (argv) => argv[0] === "chmod" && has(argv, "-R") && has(argv, "777"),
+	},
+	{
+		reason: "sudo rm",
+		match: (argv) => argv[0] === "sudo" && argv[1] === "rm",
+	},
+	{
+		reason: "fork bomb",
+		match: (_argv, raw) => /:\(\)\s*\{\s*:\|:&\s*\}\s*;:/.test(raw),
+	},
+	{
+		reason: "curl | sh (remote exec)",
+		match: (_argv, raw) => /\bcurl\b[^|]*\|\s*(?:ba)?sh\b/.test(raw) || /\bwget\b[^|]*\|\s*(?:ba)?sh\b/.test(raw),
+	},
 ];
 
 const PATH_DENY: { matcher: (abs: string) => boolean; reason: string }[] = [
@@ -34,15 +192,36 @@ const PATH_DENY: { matcher: (abs: string) => boolean; reason: string }[] = [
 
 const isBypassed = () => process.env.PI_OPUS_PACK_UNSAFE === "1";
 
+// ── Entry point ─────────────────────────────────────────────────────────────
+
 export default function (pi: ExtensionAPI) {
 	pi.on("tool_call", (event, ctx) => {
 		if (isBypassed()) return undefined;
 
 		if (event.toolName === "bash") {
 			const cmd = String((event.input as { command?: string }).command ?? "");
-			for (const rule of BASH_DENY) {
-				if (rule.pattern.test(cmd)) {
-					return { block: true, reason: `safe-deny: ${rule.reason}. Set PI_OPUS_PACK_UNSAFE=1 if intentional.` };
+			const result = tokenizeCommand(cmd);
+			if (result.dirty) {
+				// Paranoid path: we couldn't parse cleanly. Fall back to the
+				// two most dangerous whole-string regexes to avoid blocking
+				// innocent but exotic commands like `$(< file)`.
+				const paranoid = [
+					{ re: /\brm\s+-[rf]*[rf][rf]*\s+\/(\s|$)/i, reason: "rm -rf / (paranoid match)" },
+					{ re: /:\(\)\s*\{\s*:\|:&\s*\}\s*;:/, reason: "fork bomb" },
+					{ re: /\bcurl\b[^|]*\|\s*(?:ba)?sh\b/, reason: "curl | sh" },
+				];
+				for (const p of paranoid) {
+					if (p.re.test(cmd)) {
+						return { block: true, reason: `safe-deny: ${p.reason}. Tokenizer couldn't parse cleanly (${result.reason}). Set PI_OPUS_PACK_UNSAFE=1 if intentional.` };
+					}
+				}
+				return undefined;
+			}
+			for (const seg of result.segments) {
+				for (const rule of DENY_RULES) {
+					if (rule.match(seg.argv, seg.raw)) {
+						return { block: true, reason: `safe-deny: ${rule.reason}. Segment: \`${seg.raw}\`. Set PI_OPUS_PACK_UNSAFE=1 if intentional.` };
+					}
 				}
 			}
 			return undefined;
