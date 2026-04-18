@@ -143,7 +143,7 @@ const runGroupsBlocking = async (
 		if (matcherValue !== undefined && !matcherMatches(grp.matcher, matcherValue)) continue;
 		for (const h of grp.hooks ?? []) {
 			if (h.type !== undefined && h.type !== "command") continue;
-			const out = await runShellHook(h.command, payload, (h.timeout ?? DEFAULT_TIMEOUT_MS / 1000) * 1000);
+			const out = await runShellHook(h.command, payload, (h.timeout !== undefined ? h.timeout * 1000 : DEFAULT_TIMEOUT_MS));
 			if (out?.block) return out;
 		}
 	}
@@ -160,7 +160,7 @@ const runGroupsFireAndForget = async (
 		if (matcherValue !== undefined && !matcherMatches(grp.matcher, matcherValue)) continue;
 		for (const h of grp.hooks ?? []) {
 			if (h.type !== undefined && h.type !== "command") continue;
-			void runShellHook(h.command, payload, (h.timeout ?? DEFAULT_TIMEOUT_MS / 1000) * 1000);
+			void runShellHook(h.command, payload, (h.timeout !== undefined ? h.timeout * 1000 : DEFAULT_TIMEOUT_MS));
 		}
 	}
 };
