@@ -68,7 +68,12 @@ const loadConfig = (): PermissionsConfig | null => {
 	}
 };
 
-const persistAllowAlways = (rule: Rule): boolean => {
+type PersistResult =
+	| { saved: true }
+	| { saved: false; reason: "duplicate" }
+	| { saved: false; reason: "io-failed"; error: string };
+
+const persistAllowAlways = (rule: Rule): PersistResult => {
 	try {
 		let data: any = {};
 		if (existsSync(LOCAL_SETTINGS_PATH)) {
@@ -77,16 +82,16 @@ const persistAllowAlways = (rule: Rule): boolean => {
 		if (!data["opus-pack"]) data["opus-pack"] = {};
 		if (!data["opus-pack"]["permissions"]) data["opus-pack"]["permissions"] = { rules: [] };
 		if (!Array.isArray(data["opus-pack"]["permissions"]["rules"])) data["opus-pack"]["permissions"]["rules"] = [];
-		// Dedup: skip if identical rule already exists.
 		const existing: Rule[] = data["opus-pack"]["permissions"]["rules"];
 		const isDup = existing.some((r) => r.tool === rule.tool && r.path === rule.path && r.pattern === rule.pattern && r.action === rule.action);
-		if (!isDup) existing.push(rule);
+		if (isDup) return { saved: false, reason: "duplicate" };
+		existing.push(rule);
 		const tmp = `${LOCAL_SETTINGS_PATH}.tmp`;
 		writeFileSync(tmp, JSON.stringify(data, null, 2));
 		renameSync(tmp, LOCAL_SETTINGS_PATH);
-		return true;
-	} catch {
-		return false;
+		return { saved: true };
+	} catch (e) {
+		return { saved: false, reason: "io-failed", error: (e as Error).message };
 	}
 };
 
@@ -291,8 +296,14 @@ export default function (pi: ExtensionAPI) {
 				}
 				if (answer === "always") {
 					sessionAllowed.push(generalized);
-					const ok = persistAllowAlways(generalized);
-					ctx.ui.notify(ok ? `Saved allow rule to settings.local.json` : `Failed to persist rule`, ok ? "info" : "warning");
+					const result = persistAllowAlways(generalized);
+					if (result.saved) {
+						ctx.ui.notify(`Saved allow rule to settings.local.json`, "info");
+					} else if (result.reason === "duplicate") {
+						ctx.ui.notify(`Rule already in settings.local.json — session-scoped allow applied`, "info");
+					} else {
+						ctx.ui.notify(`Failed to persist rule: ${result.error}`, "warning");
+					}
 					return;
 				}
 				// fallthrough: treat as deny on timeout/dismiss.
