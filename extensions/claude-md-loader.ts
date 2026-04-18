@@ -14,6 +14,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
+import { loadOpusPackSection } from "../lib/settings.js";
 
 interface LoaderConfig {
 	enabled: boolean;
@@ -38,19 +39,7 @@ interface CachedFile {
 
 const cache = new Map<string, CachedFile>();
 
-const loadSettingsConfig = (): LoaderConfig => {
-	try {
-		const raw = readFileSync(join(homedir(), ".pi/agent/settings.json"), "utf8");
-		const parsed = JSON.parse(raw);
-		const user = parsed?.["opus-pack"]?.["claudeMdLoader"];
-		if (user && typeof user === "object") {
-			return { ...DEFAULT_CONFIG, ...user };
-		}
-	} catch {
-		// settings missing or invalid — use defaults
-	}
-	return DEFAULT_CONFIG;
-};
+const loadSettingsConfig = (): LoaderConfig => loadOpusPackSection("claudeMdLoader", DEFAULT_CONFIG);
 
 const readCached = (path: string): string | null => {
 	try {

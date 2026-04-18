@@ -21,10 +21,8 @@
  *   whitelist: string[] — tool names to skip (keep full output)
  */
 
-import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { loadOpusPackSection } from "../lib/settings.js";
 
 interface CompressConfig {
 	enabled: boolean;
@@ -40,15 +38,7 @@ const DEFAULT_CONFIG: CompressConfig = {
 	whitelist: [],
 };
 
-const loadConfig = (): CompressConfig => {
-	try {
-		const raw = readFileSync(join(homedir(), ".pi/agent/settings.json"), "utf8");
-		const parsed = JSON.parse(raw);
-		const user = parsed?.["opus-pack"]?.["mcpCompress"];
-		if (user && typeof user === "object") return { ...DEFAULT_CONFIG, ...user };
-	} catch { /* ignore */ }
-	return DEFAULT_CONFIG;
-};
+const loadConfig = (): CompressConfig => loadOpusPackSection("mcpCompress", DEFAULT_CONFIG);
 
 const matchesPrefix = (name: string, prefixes: string[]): boolean =>
 	prefixes.some((p) => name.startsWith(p));

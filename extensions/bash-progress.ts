@@ -12,10 +12,8 @@
  * finishes. Zero effect on the tool's own result.
  */
 
-import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { loadOpusPackSection } from "../lib/settings.js";
 
 interface ProgressConfig {
 	enabled: boolean;
@@ -29,15 +27,7 @@ const DEFAULT_CONFIG: ProgressConfig = {
 	tailLines: 5,
 };
 
-const loadConfig = (): ProgressConfig => {
-	try {
-		const raw = readFileSync(join(homedir(), ".pi/agent/settings.json"), "utf8");
-		const parsed = JSON.parse(raw);
-		const user = parsed?.["opus-pack"]?.["bashProgress"];
-		if (user && typeof user === "object") return { ...DEFAULT_CONFIG, ...user };
-	} catch { /* ignore */ }
-	return DEFAULT_CONFIG;
-};
+const loadConfig = (): ProgressConfig => loadOpusPackSection("bashProgress", DEFAULT_CONFIG);
 
 interface BashRun {
 	toolCallId: string;

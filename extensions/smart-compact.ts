@@ -10,6 +10,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { loadSettingsRoot } from "../lib/settings.js";
 
 const loadHints = (cwd: string): string | null => {
 	// Project-local .pi/compact-hints.md
@@ -24,14 +25,11 @@ const loadHints = (cwd: string): string | null => {
 		try { return readFileSync(globalPath, "utf8").trim(); } catch { /* ignore */ }
 	}
 
-	// settings.json opus-pack.compactHints
-	try {
-		const raw = readFileSync(join(homedir(), ".pi/agent/settings.json"), "utf8");
-		const parsed = JSON.parse(raw);
-		const hints = parsed?.["opus-pack"]?.["compactHints"];
-		if (typeof hints === "string" && hints.trim()) return hints.trim();
-		if (Array.isArray(hints)) return hints.filter((h: unknown) => typeof h === "string").join("\n");
-	} catch { /* ignore */ }
+	// settings.json opus-pack.compactHints (mtime-cached through lib/settings)
+	const parsed = loadSettingsRoot();
+	const hints = parsed?.["opus-pack"]?.["compactHints"];
+	if (typeof hints === "string" && hints.trim()) return hints.trim();
+	if (Array.isArray(hints)) return hints.filter((h: unknown) => typeof h === "string").join("\n");
 
 	return null;
 };

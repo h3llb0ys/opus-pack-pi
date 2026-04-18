@@ -11,11 +11,9 @@
  * Status slot 06-router shows the current decision persistently.
  */
 
-import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { Model, ThinkingLevel } from "@mariozechner/pi-ai";
+import { loadOpusPackSection } from "../lib/settings.js";
 
 interface LevelConfig {
 	provider?: string;
@@ -57,15 +55,7 @@ interface Decision {
 
 const MAX_LOG = 20;
 
-const loadConfig = (): RouterConfig => {
-	try {
-		const raw = readFileSync(join(homedir(), ".pi/agent/settings.json"), "utf8");
-		const parsed = JSON.parse(raw);
-		const user = parsed?.["opus-pack"]?.["modelRouter"];
-		if (user && typeof user === "object") return { ...DEFAULT_CONFIG, ...user };
-	} catch { /* ignore */ }
-	return DEFAULT_CONFIG;
-};
+const loadConfig = (): RouterConfig => loadOpusPackSection("modelRouter", DEFAULT_CONFIG);
 
 const shortModelName = (m: { id?: string; name?: string } | undefined): string => {
 	if (!m) return "?";
