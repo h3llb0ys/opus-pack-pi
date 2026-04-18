@@ -7,6 +7,7 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { isExtensionDisabled } from "../lib/settings.js";
 
 interface ContextBreakdown {
 	systemPrompt: number;
@@ -110,6 +111,7 @@ const bar = (pct: number, width = 30): string => {
 };
 
 export default function (pi: ExtensionAPI) {
+	if (isExtensionDisabled("context")) return;
 	pi.registerCommand("context", {
 		description: "Show context window breakdown: what's using your tokens",
 		handler: async (_args, ctx) => {

@@ -17,6 +17,7 @@
 
 import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI, ExtensionContext, AgentToolResult } from "@mariozechner/pi-coding-agent";
+import { isExtensionDisabled } from "../lib/settings.js";
 import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { basename, isAbsolute, join, resolve } from "node:path";
 
@@ -148,6 +149,7 @@ const tailFile = (path: string, lines: number, from: number | undefined): { text
 };
 
 export default function (pi: ExtensionAPI) {
+	if (isExtensionDisabled("log-tail")) return;
 	// Status bar refresh on turn boundaries.
 	pi.on("turn_end", async (_event, ctx) => {
 		const entries = await scanBgEntries(pi);

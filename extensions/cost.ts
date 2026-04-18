@@ -10,6 +10,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, basename } from "node:path";
 import { homedir } from "node:os";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { isExtensionDisabled } from "../lib/settings.js";
 
 interface UsageEntry {
 	input: number;
@@ -111,6 +112,7 @@ const collectAllSessions = (sessionsDir: string): Map<string, DayUsage> => {
 };
 
 export default function (pi: ExtensionAPI) {
+	if (isExtensionDisabled("cost")) return;
 	pi.registerCommand("cost", {
 		description: "Token usage dashboard: per-session, per-day, last 7 days",
 		handler: async (_args, ctx) => {

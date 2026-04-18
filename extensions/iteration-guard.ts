@@ -6,10 +6,12 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { isExtensionDisabled } from "../lib/settings.js";
 
 const DEFAULT_CAP = Number(process.env.PI_MAX_TURNS ?? 40);
 
 export default function (pi: ExtensionAPI) {
+	if (isExtensionDisabled("iteration-guard")) return;
 	pi.registerFlag("max-turns", { type: "string", description: "Hard cap on agent turns per run" });
 
 	let cap = DEFAULT_CAP;

@@ -11,6 +11,7 @@ import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Key } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
+import { isExtensionDisabled } from "../lib/settings.js";
 
 const PLAN_MODE_TOOLS = ["read", "bash", "grep", "find", "ls"];
 const NORMAL_MODE_TOOLS = ["read", "bash", "edit", "write"];
@@ -119,6 +120,7 @@ function extractDoneSteps(message: string): number[] {
 }
 
 export default function (pi: ExtensionAPI) {
+	if (isExtensionDisabled("plan-mode")) return;
 	let planModeEnabled = false;
 	let executionMode = false;
 	let todoItems: TodoItem[] = [];

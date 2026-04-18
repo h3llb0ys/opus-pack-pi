@@ -22,7 +22,7 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { loadOpusPackSection } from "../lib/settings.js";
+import { isExtensionDisabled, loadOpusPackSection } from "../lib/settings.js";
 
 interface CompressConfig {
 	enabled: boolean;
@@ -89,6 +89,7 @@ const summarize = (text: string, isError: boolean, toolName: string, maxLineLen:
 };
 
 export default function (pi: ExtensionAPI) {
+	if (isExtensionDisabled("mcp-compress")) return;
 	pi.on("tool_result", async (event) => {
 		const cfg = loadConfig();
 		if (!cfg.enabled) return;

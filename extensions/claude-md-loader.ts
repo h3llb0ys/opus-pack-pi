@@ -14,7 +14,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
-import { loadOpusPackSection } from "../lib/settings.js";
+import { isExtensionDisabled, loadOpusPackSection } from "../lib/settings.js";
 
 interface LoaderConfig {
 	enabled: boolean;
@@ -118,6 +118,7 @@ const buildMerged = (cwd: string, cfg: LoaderConfig): string => {
 };
 
 export default function (pi: ExtensionAPI) {
+	if (isExtensionDisabled("claude-md-loader")) return;
 	pi.on("before_agent_start", (event, ctx) => {
 		const cfg = loadSettingsConfig();
 		if (!cfg.enabled) return;

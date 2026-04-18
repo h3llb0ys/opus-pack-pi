@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
-import { loadOpusPackSection } from "../lib/settings.js";
+import { isExtensionDisabled, loadOpusPackSection } from "../lib/settings.js";
 
 interface SearchConfig {
 	enabled: boolean;
@@ -113,6 +113,7 @@ const confirmSuspicious = async (ctx: ExtensionCommandContext, repo: GhRepo): Pr
 };
 
 export default function (pi: ExtensionAPI) {
+	if (isExtensionDisabled("pi-search")) return;
 	pi.registerCommand("pi-search", {
 		description: "Search and install community pi extensions (topic:pi-package)",
 		handler: async (args, ctx) => {

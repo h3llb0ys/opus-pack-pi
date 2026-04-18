@@ -13,7 +13,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { Model, ThinkingLevel } from "@mariozechner/pi-ai";
-import { loadOpusPackSection } from "../lib/settings.js";
+import { isExtensionDisabled, loadOpusPackSection } from "../lib/settings.js";
 
 interface LevelConfig {
 	provider?: string;
@@ -128,6 +128,7 @@ const evalRules = (prompt: string, cfg: RouterConfig): { level: string; matchedR
 };
 
 export default function (pi: ExtensionAPI) {
+	if (isExtensionDisabled("model-router")) return;
 	let pausedByUser = false; // set when user manually switches model mid-session
 	let oneShotLevel: string | null = null;
 	let lastLevel: string | null = null;

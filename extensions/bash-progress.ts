@@ -13,7 +13,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { loadOpusPackSection } from "../lib/settings.js";
+import { isExtensionDisabled, loadOpusPackSection } from "../lib/settings.js";
 
 interface ProgressConfig {
 	enabled: boolean;
@@ -64,6 +64,7 @@ const fmtElapsed = (ms: number): string => {
 };
 
 export default function (pi: ExtensionAPI) {
+	if (isExtensionDisabled("bash-progress")) return;
 	const runs = new Map<string, BashRun>();
 
 	pi.on("tool_execution_start", async (event, ctx) => {

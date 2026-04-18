@@ -6,8 +6,10 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { isExtensionDisabled } from "../lib/settings.js";
 
 export default function (pi: ExtensionAPI) {
+	if (isExtensionDisabled("git-checkpoint")) return;
 	const checkpoints = new Map<string, string>();
 	let currentEntryId: string | undefined;
 

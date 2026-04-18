@@ -9,6 +9,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { isExtensionDisabled } from "../lib/settings.js";
 
 const renderFooter = (ext: number, skills: number, mcp: number) =>
 	`ext:${ext} skills:${skills} mcp:${mcp}`;
@@ -19,6 +20,7 @@ const basename = (p: string) => {
 };
 
 export default function (pi: ExtensionAPI) {
+	if (isExtensionDisabled("status")) return;
 	const refreshFooter = (ctx: ExtensionContext) => {
 		try {
 			const cmds = pi.getCommands();

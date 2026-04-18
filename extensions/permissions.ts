@@ -22,6 +22,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { minimatch } from "minimatch";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { isExtensionDisabled } from "../lib/settings.js";
 
 type Action = "allow" | "confirm" | "deny";
 
@@ -192,6 +193,7 @@ const buildWritePreview = (input: Record<string, unknown>, cwd: string): string 
 };
 
 export default function (pi: ExtensionAPI) {
+	if (isExtensionDisabled("permissions")) return;
 	let config: PermissionsConfig | null = null;
 
 	// Smart mode: track read files

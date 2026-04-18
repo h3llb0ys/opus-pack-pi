@@ -10,8 +10,10 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { isExtensionDisabled } from "../lib/settings.js";
 
 export default function (pi: ExtensionAPI) {
+	if (isExtensionDisabled("rewind")) return;
 	pi.registerCommand("rewind", {
 		description: "Undo/rollback agent changes: last action, checkpoint, or commit",
 		handler: async (_args, ctx) => {

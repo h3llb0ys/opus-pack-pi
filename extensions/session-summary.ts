@@ -7,6 +7,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { isExtensionDisabled } from "../lib/settings.js";
 
 interface ToolStat {
 	reads: number;
@@ -113,6 +114,7 @@ const formatSummary = (stat: ToolStat): string | null => {
 };
 
 export default function (pi: ExtensionAPI) {
+	if (isExtensionDisabled("session-summary")) return;
 	// Listen to plan-mode state broadcasts so we can skip the summary while
 	// the user is still iterating on a plan (no point summarising a turn
 	// that's part of /plan → refine → submit → still in plan mode).

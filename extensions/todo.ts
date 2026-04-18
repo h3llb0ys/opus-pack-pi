@@ -17,6 +17,7 @@
 import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { isExtensionDisabled } from "../lib/settings.js";
 
 type Status = "pending" | "in_progress" | "done";
 
@@ -81,6 +82,7 @@ const isModifyingBash = (cmd: string): boolean =>
 const MODIFYING_CALLS_BEFORE_START_NAG = 3;
 
 export default function (pi: ExtensionAPI) {
+	if (isExtensionDisabled("todo")) return;
 	let items: TodoEntry[] = [];
 	let nextId = 1;
 

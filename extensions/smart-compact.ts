@@ -10,7 +10,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { loadSettingsRoot } from "../lib/settings.js";
+import { isExtensionDisabled, loadSettingsRoot } from "../lib/settings.js";
 
 const loadHints = (cwd: string): string | null => {
 	// Project-local .pi/compact-hints.md
@@ -35,6 +35,7 @@ const loadHints = (cwd: string): string | null => {
 };
 
 export default function (pi: ExtensionAPI) {
+	if (isExtensionDisabled("smart-compact")) return;
 	let compactStartTime = 0;
 
 	// The built-in /compact [focus] slash already forwards `focus` as

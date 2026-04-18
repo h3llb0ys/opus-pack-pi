@@ -6,6 +6,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { isExtensionDisabled } from "../lib/settings.js";
 
 async function checkDirtyRepo(
 	pi: ExtensionAPI,
@@ -45,6 +46,7 @@ async function checkDirtyRepo(
 }
 
 export default function (pi: ExtensionAPI) {
+	if (isExtensionDisabled("dirty-repo-guard")) return;
 	pi.on("session_before_switch", async (event, ctx) => {
 		const action = event.reason === "new" ? "new session" : "switch session";
 		return checkDirtyRepo(pi, ctx, action);

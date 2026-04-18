@@ -13,8 +13,10 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { isExtensionDisabled } from "../lib/settings.js";
 
 export default function (pi: ExtensionAPI) {
+	if (isExtensionDisabled("skills")) return;
 	pi.on("resources_discover", (_event) => {
 		const root = join(homedir(), ".claude", "skills");
 		if (!existsSync(root)) return {};

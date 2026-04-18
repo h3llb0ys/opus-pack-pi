@@ -16,6 +16,7 @@
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { isExtensionDisabled } from "../lib/settings.js";
 
 const HOME = homedir();
 
@@ -195,6 +196,7 @@ const isBypassed = () => process.env.PI_OPUS_PACK_UNSAFE === "1";
 // ── Entry point ─────────────────────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
+	if (isExtensionDisabled("safe-deny")) return;
 	pi.on("tool_call", (event, ctx) => {
 		if (isBypassed()) return undefined;
 

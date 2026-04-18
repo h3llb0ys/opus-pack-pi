@@ -7,8 +7,10 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { truncateHead, DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize } from "@mariozechner/pi-coding-agent";
+import { isExtensionDisabled } from "../lib/settings.js";
 
 export default function (pi: ExtensionAPI) {
+	if (isExtensionDisabled("diff")) return;
 	pi.registerCommand("diff", {
 		description: "Review agent changes: file overview + interactive diff picker",
 		handler: async (_args, ctx) => {

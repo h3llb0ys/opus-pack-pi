@@ -17,6 +17,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { isExtensionDisabled } from "../lib/settings.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -63,6 +64,7 @@ const notifyLinux = async (title: string, body: string): Promise<void> => {
 };
 
 export default function (pi: ExtensionAPI) {
+	if (isExtensionDisabled("desktop-notify")) return;
 	let agentStartTime = 0;
 	const config = loadConfig();
 

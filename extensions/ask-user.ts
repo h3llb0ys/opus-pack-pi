@@ -9,10 +9,12 @@
 
 import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI, AgentToolResult } from "@mariozechner/pi-coding-agent";
+import { isExtensionDisabled } from "../lib/settings.js";
 
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
 
 export default function (pi: ExtensionAPI) {
+	if (isExtensionDisabled("ask-user")) return;
 	pi.registerTool({
 		name: "ask_user",
 		label: "Ask user",

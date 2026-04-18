@@ -6,8 +6,10 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { isExtensionDisabled } from "../lib/settings.js";
 
 export default function (pi: ExtensionAPI) {
+	if (isExtensionDisabled("auto-commit-on-exit")) return;
 	pi.on("session_shutdown", async (_event, ctx) => {
 		// Check for uncommitted changes
 		const { stdout: status, code } = await pi.exec("git", ["status", "--porcelain"]);

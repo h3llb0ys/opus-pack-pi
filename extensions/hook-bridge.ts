@@ -26,6 +26,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { isExtensionDisabled } from "../lib/settings.js";
 
 type HookEntry = { type?: "command"; command: string; timeout?: number };
 type HookGroup = { matcher?: string; hooks: HookEntry[] };
@@ -166,6 +167,7 @@ const runGroupsFireAndForget = async (
 };
 
 export default function (pi: ExtensionAPI) {
+	if (isExtensionDisabled("hook-bridge")) return;
 	pi.on("session_start", async (event, ctx) => {
 		const hooks = loadHooks(ctx.cwd);
 		await runGroupsFireAndForget(hooks.SessionStart, undefined, {

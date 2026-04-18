@@ -6,6 +6,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext, SlashCommandInfo } from "@mariozechner/pi-coding-agent";
+import { isExtensionDisabled } from "../lib/settings.js";
 
 const formatList = (title: string, items: SlashCommandInfo[]): string => {
 	if (items.length === 0) return `${title}: (none)`;
@@ -23,6 +24,7 @@ const renderToCtx = (ctx: ExtensionContext, body: string) => {
 };
 
 export default function (pi: ExtensionAPI) {
+	if (isExtensionDisabled("list-resources")) return;
 	pi.registerCommand("skills", {
 		description: "List installed skills with descriptions",
 		handler: async (_args, ctx) => {
