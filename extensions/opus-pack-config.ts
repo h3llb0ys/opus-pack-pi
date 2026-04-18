@@ -20,7 +20,7 @@
  * separate commit.
  */
 
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Key } from "@mariozechner/pi-tui";
 import { listDisabledExtensions, setExtensionDisabled } from "../lib/settings.js";
 
@@ -162,9 +162,16 @@ const applyChanges = (state: ModalState): { okCount: number; errors: string[] } 
 	return { okCount: ok, errors };
 };
 
-const runModal = async (pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> => {
+/**
+ * Shared modal loop. `reloadFn` is non-null when the caller can trigger
+ * a live reload (command context); null for shortcut context which only
+ * saves and tells the user to /reload manually.
+ */
+const runModal = async (
+	ctx: ExtensionContext & { hasUI: boolean },
+	reloadFn: (() => Promise<void>) | null,
+): Promise<void> => {
 	if (!ctx.hasUI) {
-		// Non-interactive fallback: dump status.
 		const disabled = listDisabledExtensions();
 		ctx.ui.notify(
 			`opus-pack extensions: ${OPUS_EXTENSIONS.length - disabled.length}/${OPUS_EXTENSIONS.length} enabled.` +
@@ -180,7 +187,6 @@ const runModal = async (pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise
 		const { lines, entries } = buildOptions(state);
 		const picked = await ctx.ui.select("opus-pack extensions:", lines);
 		if (!picked) {
-			// User dismissed via Esc — treat as cancel.
 			if (state.dirty) ctx.ui.notify("opus-pack: changes discarded", "info");
 			return;
 		}
@@ -197,7 +203,7 @@ const runModal = async (pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise
 			if (r.errors.length > 0) {
 				ctx.ui.notify(`opus-pack: saved ${r.okCount} change(s); errors:\n  ${r.errors.join("\n  ")}`, "warning");
 			} else {
-				ctx.ui.notify(`opus-pack: saved. Run /reload to apply.`, "info");
+				ctx.ui.notify("opus-pack: saved. Run /reload to apply.", "info");
 			}
 			return;
 		}
@@ -209,23 +215,23 @@ const runModal = async (pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise
 					ctx.ui.notify(`opus-pack: save partial (${r.errors.length} error(s))`, "warning");
 				}
 			}
-			try {
-				await ctx.reload();
-				ctx.ui.notify("opus-pack: reloaded", "info");
-			} catch (e) {
-				ctx.ui.notify(`opus-pack: reload failed — ${(e as Error).message}`, "warning");
+			if (reloadFn) {
+				try {
+					await reloadFn();
+					ctx.ui.notify("opus-pack: reloaded", "info");
+				} catch (e) {
+					ctx.ui.notify(`opus-pack: reload failed — ${(e as Error).message}`, "warning");
+				}
+			} else {
+				ctx.ui.notify("opus-pack: saved. Run /reload to apply (shortcut cannot auto-reload).", "info");
 			}
 			return;
 		}
 		if (idx === 2) {
-			// Cancel.
 			if (state.dirty) ctx.ui.notify("opus-pack: changes discarded", "info");
 			return;
 		}
-		if (!entry) {
-			// Header / separator — ignore, re-show picker.
-			continue;
-		}
+		if (!entry) continue;
 
 		// Toggle entry.
 		const wasDisabled = state.disabled.has(entry.name);
@@ -236,7 +242,6 @@ const runModal = async (pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise
 		}
 		if (willDisable) state.disabled.add(entry.name);
 		else state.disabled.delete(entry.name);
-		// Compare against on-disk to compute `dirty`.
 		const onDisk = new Set(listDisabledExtensions());
 		state.dirty = onDisk.size !== state.disabled.size
 			|| [...onDisk].some((n) => !state.disabled.has(n))
@@ -254,10 +259,12 @@ const updateBadge = (ctx: ExtensionContext) => {
 };
 
 export default function (pi: ExtensionAPI) {
+	void pi; // reserved for future use
+
 	pi.registerCommand("opus-pack", {
 		description: "Toggle on/off for opus-pack extensions (persists to settings.local.json)",
 		handler: async (_args, ctx) => {
-			await runModal(pi, ctx);
+			await runModal(ctx, () => ctx.reload());
 			updateBadge(ctx);
 		},
 	});
@@ -265,50 +272,7 @@ export default function (pi: ExtensionAPI) {
 	pi.registerShortcut(Key.ctrlAlt("o"), {
 		description: "Open /opus-pack config modal",
 		handler: async (ctx) => {
-			// registerShortcut ctx is ExtensionContext, not CommandContext;
-			// fall back to non-interactive status dump if reload() is needed.
-			if (!ctx.hasUI) {
-				const disabled = listDisabledExtensions();
-				ctx.ui.notify(
-					`opus-pack extensions: ${OPUS_EXTENSIONS.length - disabled.length}/${OPUS_EXTENSIONS.length} enabled.`,
-					"info",
-				);
-				return;
-			}
-			// Shortcut path: reuse the same picker loop but skip the "Save & Reload" action
-			// since ctx.reload() is only on ExtensionCommandContext.
-			const state = buildInitialState();
-			while (true) {
-				const { lines, entries } = buildOptions(state);
-				const picked = await ctx.ui.select("opus-pack extensions:", lines);
-				if (!picked) { if (state.dirty) ctx.ui.notify("opus-pack: changes discarded", "info"); break; }
-				const idx = lines.indexOf(picked);
-				const entry = entries[idx] ?? null;
-				if (idx === 0) {
-					if (!state.dirty) { ctx.ui.notify("opus-pack: nothing to save", "info"); break; }
-					const r = applyChanges(state);
-					ctx.ui.notify(r.errors.length ? `opus-pack: saved with errors` : `opus-pack: saved. Run /reload to apply.`, r.errors.length ? "warning" : "info");
-					break;
-				}
-				if (idx === 1 || idx === 2) {
-					if (idx === 1 && state.dirty) applyChanges(state);
-					if (idx === 1) ctx.ui.notify("opus-pack: saved. Run /reload to apply (shortcut cannot auto-reload).", "info");
-					break;
-				}
-				if (!entry) continue;
-				const wasDisabled = state.disabled.has(entry.name);
-				const willDisable = !wasDisabled;
-				if (willDisable && entry.critical) {
-					const ok = await promptConfirmCritical(ctx, entry.name);
-					if (!ok) continue;
-				}
-				if (willDisable) state.disabled.add(entry.name);
-				else state.disabled.delete(entry.name);
-				const onDisk = new Set(listDisabledExtensions());
-				state.dirty = onDisk.size !== state.disabled.size
-					|| [...onDisk].some((n) => !state.disabled.has(n))
-					|| [...state.disabled].some((n) => !onDisk.has(n));
-			}
+			await runModal(ctx, null);
 			updateBadge(ctx);
 		},
 	});
