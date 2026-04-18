@@ -94,9 +94,11 @@ export default function (pi: ExtensionAPI) {
 		// tool_execution_end can clear it — otherwise a phantom tick fires
 		// after the widget has already been torn down.
 		const tick = () => {
-			const r = runs.get(event.toolCallId);
-			if (!r || !r.shown) { run.tickTimer = null; return; }
-			renderWidget(ctx, r, cfg);
+			if (!runs.has(run.toolCallId) || !run.shown) {
+				run.tickTimer = null;
+				return;
+			}
+			renderWidget(ctx, run, cfg);
 			run.tickTimer = setTimeout(tick, 1000);
 		};
 		run.tickTimer = setTimeout(tick, cfg.minDurationMs + 1000);
