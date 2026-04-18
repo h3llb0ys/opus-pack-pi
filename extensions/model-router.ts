@@ -55,6 +55,41 @@ interface Decision {
 
 const MAX_LOG = 20;
 
+interface CompiledRule {
+	match?: RegExp;
+	minChars?: number;
+	pathTouches?: RegExp;
+	level: string;
+}
+
+const safeCompile = (pattern: string | undefined, flags: string): RegExp | undefined => {
+	if (!pattern) return undefined;
+	try { return new RegExp(pattern, flags); } catch { return undefined; }
+};
+
+const compileRules = (rules: RouterRule[]): CompiledRule[] =>
+	rules.map((r) => ({
+		match: safeCompile(r.match, "i"),
+		minChars: r.minChars,
+		pathTouches: safeCompile(r.pathTouches, "i"),
+		level: r.level,
+	}));
+
+// Cache compiled rules while the config is stable. loadOpusPackSection
+// returns a fresh object via spread on every call, so we key the cache on
+// the JSON stringification of the raw rules — cheap for <=30 items and
+// invalidates automatically when the user edits settings.json.
+let lastRulesKey = "";
+let lastCompiled: CompiledRule[] = [];
+
+const getCompiledRules = (cfg: RouterConfig): CompiledRule[] => {
+	const key = JSON.stringify(cfg.rules);
+	if (key === lastRulesKey) return lastCompiled;
+	lastCompiled = compileRules(cfg.rules);
+	lastRulesKey = key;
+	return lastCompiled;
+};
+
 const loadConfig = (): RouterConfig => loadOpusPackSection("modelRouter", DEFAULT_CONFIG);
 
 const shortModelName = (m: { id?: string; name?: string } | undefined): string => {
@@ -79,11 +114,12 @@ const resolveModel = (ctx: ExtensionContext, lvl: LevelConfig): Model<unknown> |
 };
 
 const evalRules = (prompt: string, cfg: RouterConfig): { level: string; matchedRule: string } => {
-	for (let i = 0; i < cfg.rules.length; i++) {
-		const r = cfg.rules[i];
-		const matchOk = !r.match || new RegExp(r.match, "i").test(prompt);
+	const rules = getCompiledRules(cfg);
+	for (let i = 0; i < rules.length; i++) {
+		const r = rules[i];
+		const matchOk = !r.match || r.match.test(prompt);
 		const charsOk = r.minChars === undefined || prompt.length >= r.minChars;
-		const pathOk = !r.pathTouches || new RegExp(r.pathTouches, "i").test(prompt);
+		const pathOk = !r.pathTouches || r.pathTouches.test(prompt);
 		if (matchOk && charsOk && pathOk) {
 			return { level: r.level, matchedRule: `rule:${i}` };
 		}
