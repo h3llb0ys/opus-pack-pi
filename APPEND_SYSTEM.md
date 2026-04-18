@@ -47,7 +47,7 @@
 - `[DONE:n]` маркеры для tracking в execution mode остаются работающими (backward-compat).
 
 ### Compact focus
-- `/compact <focus>` — inline focus перебивает `.pi/compact-hints.md`. Пример: `/compact preserve auth migration context`.
+- Built-in pi `/compact [focus]` — inline focus пишется в `customInstructions`. Наш smart-compact extension мерджит его с configured hints (`.pi/compact-hints.md` / `opus-pack.compactHints`).
 
 ### Model router
 - Если в settings включён `modelRouter` — первая строка промпта матчится rules, и turn идёт на указанной модели + thinking level.
@@ -62,9 +62,7 @@
 - Cap `maxTotalChars` в settings (default 20000) — чтоб не раздуть system prompt.
 
 ### Session navigation
-- `/resume` — переключиться на другую сессию в том же cwd.
-- `/fork` — создать ветку от выбранного user-message (старая session intact).
-- `/tree` — ASCII-дерево текущей session (current leaf отмечен ●).
+- Используй built-in pi `/resume`, `/fork`, `/tree` — они уже реализованы в pi-core.
 
 ### ask_user tool
 - Используй `ask_user({question, choices?})` ТОЛЬКО когда требования реально неоднозначны и нельзя сделать reasonable assumption.

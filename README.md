@@ -17,7 +17,7 @@ Opinionated bundle для запуска Claude Opus 4.7 внутри [pi-coding
 | `cost.ts` | `/cost` — дашборд token usage: текущая сессия, за сегодня, за 7 дней с breakdown по дням. |
 | `context.ts` | `/context` — что жрёт контекст: breakdown по типам (system/user/tool), топ tools, топ файлов. |
 | `session-summary.ts` | Авто-резюме при завершении agent'а (если ≥3 tool calls): сколько файлов изменено, команд запущено, ошибок. |
-| `smart-compact.ts` | `/compact <focus>` — inline focus перебивает `.pi/compact-hints.md` или `opus-pack.compactHints`. Сохраняет ключевой контекст при compact. |
+| `smart-compact.ts` | Мерджит `.pi/compact-hints.md` / `opus-pack.compactHints` с inline focus от built-in `/compact [focus]`. Сохраняет ключевой контекст при compact. |
 | `skills.ts` | Регистрирует `~/.claude/skills/` как skill root, чтоб CC-style скиллы подхватывались pi-native `<available_skills>` каталогом. |
 | `desktop-notify.ts` | OS notification (macOS/Linux) по завершении agent'а. Настройка порога длительности + звук. `/notify-test`. |
 | `iteration-guard.ts` | Cap на turns в одном agent-run'е (default 40). `/continue` → `+20`. Флаг `--max-turns=<N>`. |
@@ -29,7 +29,6 @@ Opinionated bundle для запуска Claude Opus 4.7 внутри [pi-coding
 | `model-router.ts` | Heuristic auto-switch модели и thinking level по промпту. `/router <level>`, `/router status`, `/router off`. Provider-agnostic. Status slot `↗ model·level`. |
 | `bash-progress.ts` | Live widget с tail логов и elapsed counter для долгих bash-команд (>2s). Не меняет сам tool. |
 | `ask-user.ts` | LLM-tool `ask_user(question, choices?)` для clarifying questions. Non-interactive → error, fallback на best judgement. |
-| `resume.ts` | `/resume` — switch session, `/fork` — branch от user-message, `/tree` — ASCII session tree. |
 | `pi-search.ts` | `/pi-search [query]` — GitHub topic `pi-package` discovery + interactive install + `/reload`. Cache 1h. |
 | `mcp-compress.ts` | Схлопывает verbose MCP tool results в 1-строчные summaries (`ok  memory_save: saved, id=208, deduped`). Recognises saved/id/deduplicated/episode_id/count/error. Config `opus-pack.mcpCompress` (prefixes, maxLineLen, whitelist). |
 
