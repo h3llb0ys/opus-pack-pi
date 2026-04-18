@@ -113,7 +113,18 @@ const formatSummary = (stat: ToolStat): string | null => {
 };
 
 export default function (pi: ExtensionAPI) {
+	// Listen to plan-mode state broadcasts so we can skip the summary while
+	// the user is still iterating on a plan (no point summarising a turn
+	// that's part of /plan → refine → submit → still in plan mode).
+	let planActive = false;
+	pi.events.on("opus-pack:plan-state", (data) => {
+		if (data && typeof data === "object" && "active" in data) {
+			planActive = Boolean((data as { active: unknown }).active);
+		}
+	});
+
 	pi.on("agent_end", async (_event, ctx) => {
+		if (planActive) return;
 		const stat = countTools(ctx);
 		const summary = formatSummary(stat);
 		if (summary) {

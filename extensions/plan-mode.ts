@@ -125,7 +125,14 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerFlag("plan", { type: "boolean", description: "Start in plan mode", default: false });
 
+	// Broadcast plan-mode state on every change so other extensions (e.g.
+	// session-summary) can react without reaching back into this module.
+	const broadcastPlanState = () => {
+		pi.events.emit("opus-pack:plan-state", { active: planModeEnabled || executionMode });
+	};
+
 	const updateStatus = (ctx: ExtensionContext) => {
+		broadcastPlanState();
 		if (executionMode && todoItems.length > 0) {
 			const done = todoItems.filter((t) => t.completed).length;
 			ctx.ui.setStatus("01-plan", ctx.ui.theme.fg("accent", `📋 ${done}/${todoItems.length}`));
