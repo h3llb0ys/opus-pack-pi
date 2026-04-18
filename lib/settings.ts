@@ -1,5 +1,5 @@
 /**
- * Shared, mtime-cached reader for ~/.pi/agent/settings.json.
+ * Shared, mtime-cached readers for settings.json and settings.local.json.
  *
  * Every extension in this pack that wants a slice of opus-pack config used
  * to reimplement the same readFileSync + JSON.parse + key lookup. In long
@@ -8,30 +8,36 @@
  * them until the file's mtime changes.
  */
 
-import { readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 const SETTINGS_PATH = join(homedir(), ".pi/agent/settings.json");
+const LOCAL_SETTINGS_PATH = join(homedir(), ".pi/agent/settings.local.json");
 
-let cachedMtimeMs = 0;
-let cachedParsed: any = null;
-let cachedRawPath = SETTINGS_PATH;
+interface Cache {
+	mtimeMs: number;
+	parsed: any;
+}
 
-const loadRaw = (path: string = SETTINGS_PATH): any => {
+const caches = new Map<string, Cache>();
+
+const loadRawFrom = (path: string): any => {
 	try {
 		const stat = statSync(path);
-		if (path === cachedRawPath && cachedParsed && stat.mtimeMs === cachedMtimeMs) {
-			return cachedParsed;
-		}
+		const cached = caches.get(path);
+		if (cached && cached.mtimeMs === stat.mtimeMs) return cached.parsed;
 		const raw = readFileSync(path, "utf8");
-		cachedParsed = JSON.parse(raw);
-		cachedMtimeMs = stat.mtimeMs;
-		cachedRawPath = path;
-		return cachedParsed;
+		const parsed = JSON.parse(raw);
+		caches.set(path, { mtimeMs: stat.mtimeMs, parsed });
+		return parsed;
 	} catch {
 		return null;
 	}
+};
+
+const invalidateCache = (path: string) => {
+	caches.delete(path);
 };
 
 /**
@@ -39,7 +45,7 @@ const loadRaw = (path: string = SETTINGS_PATH): any => {
  * Returns a fresh object each call so callers can mutate safely.
  */
 export function loadOpusPackSection<T extends Record<string, unknown>>(section: string, defaults: T): T {
-	const parsed = loadRaw();
+	const parsed = loadRawFrom(SETTINGS_PATH);
 	const user = parsed?.["opus-pack"]?.[section];
 	if (user && typeof user === "object") {
 		return { ...defaults, ...user } as T;
@@ -49,5 +55,58 @@ export function loadOpusPackSection<T extends Record<string, unknown>>(section: 
 
 /** Escape hatch for consumers that want the full parsed settings.json. */
 export function loadSettingsRoot(): any {
-	return loadRaw();
+	return loadRawFrom(SETTINGS_PATH);
+}
+
+/** Escape hatch for the local overrides file. */
+export function loadLocalSettingsRoot(): any {
+	return loadRawFrom(LOCAL_SETTINGS_PATH);
+}
+
+/**
+ * Is the opus-pack extension with the given short name currently disabled?
+ * Read from settings.local.json → opus-pack.extensions.disabled[].
+ */
+export function isExtensionDisabled(name: string): boolean {
+	const parsed = loadLocalSettingsRoot();
+	const disabled = parsed?.["opus-pack"]?.["extensions"]?.["disabled"];
+	return Array.isArray(disabled) && disabled.includes(name);
+}
+
+/**
+ * Return the sorted list of disabled extension short names, or an empty array.
+ */
+export function listDisabledExtensions(): string[] {
+	const parsed = loadLocalSettingsRoot();
+	const disabled = parsed?.["opus-pack"]?.["extensions"]?.["disabled"];
+	return Array.isArray(disabled) ? [...disabled].map(String).sort() : [];
+}
+
+/**
+ * Persist an extension's disabled flag into settings.local.json via an
+ * atomic write. Invalidates the local-settings cache so the next read
+ * picks up the change in the same session.
+ */
+export function setExtensionDisabled(name: string, disabled: boolean): { saved: boolean; error?: string } {
+	try {
+		let data: any = existsSync(LOCAL_SETTINGS_PATH)
+			? (() => { try { return JSON.parse(readFileSync(LOCAL_SETTINGS_PATH, "utf8")); } catch { return {}; } })()
+			: {};
+		if (!data["opus-pack"]) data["opus-pack"] = {};
+		if (!data["opus-pack"]["extensions"]) data["opus-pack"]["extensions"] = {};
+		const current: string[] = Array.isArray(data["opus-pack"]["extensions"]["disabled"])
+			? data["opus-pack"]["extensions"]["disabled"]
+			: [];
+		const set = new Set(current);
+		if (disabled) set.add(name);
+		else set.delete(name);
+		data["opus-pack"]["extensions"]["disabled"] = [...set].sort();
+		const tmp = `${LOCAL_SETTINGS_PATH}.tmp`;
+		writeFileSync(tmp, JSON.stringify(data, null, 2));
+		renameSync(tmp, LOCAL_SETTINGS_PATH);
+		invalidateCache(LOCAL_SETTINGS_PATH);
+		return { saved: true };
+	} catch (e) {
+		return { saved: false, error: (e as Error).message };
+	}
 }
