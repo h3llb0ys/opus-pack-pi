@@ -34,18 +34,14 @@ export default function (pi: ExtensionAPI) {
 
 	const refreshStatusline = async (ctx: ExtensionContext) => {
 		try {
-			const model = (ctx.model as { id?: string } | undefined)?.id ?? "?";
-			const modelShort = model.replace(/^claude-/, "").split("-").slice(0, 2).join("-");
-			const usage = ctx.getContextUsage();
-			const pct = usage?.percent ?? null;
-			const ctxPart = pct !== null ? `ctx:${pct}%` : "";
 			let branch = "";
 			try {
 				const b = await pi.exec("git", ["symbolic-ref", "--short", "-q", "HEAD"], { cwd: ctx.cwd, timeout: 500 });
 				if (b.code === 0) branch = b.stdout.trim();
 			} catch { /* ignore */ }
-			const parts = [basename(ctx.cwd), branch, modelShort, ctxPart].filter(Boolean);
-			ctx.ui.setStatus("80-line", parts.join(" · "));
+			const dir = basename(ctx.cwd) || ctx.cwd;
+			const label = branch ? `${dir} (${branch})` : dir;
+			ctx.ui.setStatus("80-line", label);
 		} catch {
 			// ignore
 		}
@@ -61,9 +57,6 @@ export default function (pi: ExtensionAPI) {
 		void refreshStatusline(ctx);
 	});
 
-	pi.on("model_select", async (_event, ctx) => {
-		void refreshStatusline(ctx);
-	});
 
 	pi.registerCommand("status", {
 		description: "Show pi status: extensions, skills, MCP tools, model, session, hooks",

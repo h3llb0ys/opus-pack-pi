@@ -15,23 +15,60 @@ import { Type } from "@sinclair/typebox";
 const PLAN_MODE_TOOLS = ["read", "bash", "grep", "find", "ls"];
 const NORMAL_MODE_TOOLS = ["read", "bash", "edit", "write"];
 
-const SAFE_PATTERNS = [
-	/^\s*cat\b/, /^\s*head\b/, /^\s*tail\b/, /^\s*grep\b/, /^\s*find\b/,
-	/^\s*ls\b/, /^\s*pwd\b/, /^\s*echo\b/, /^\s*wc\b/, /^\s*sort\b/,
-	/^\s*diff\b/, /^\s*file\b/, /^\s*stat\b/, /^\s*du\b/, /^\s*tree\b/,
-	/^\s*which\b/, /^\s*env\b/, /^\s*uname\b/, /^\s*whoami\b/,
-	/^\s*git\s+(status|log|diff|show|branch|remote|config\s+--get)/i,
-	/^\s*git\s+ls-/i, /^\s*npm\s+(list|ls|view|outdated)/i,
-	/^\s*jq\b/, /^\s*rg\b/, /^\s*fd\b/, /^\s*bat\b/,
+// Read-only allowlist of command names that may appear in any segment
+// of a pipeline / compound command in plan mode.
+const SAFE_COMMANDS = new Set([
+	"cat", "head", "tail", "grep", "egrep", "fgrep", "find", "ls", "pwd", "echo", "printf",
+	"wc", "sort", "uniq", "cut", "tr", "awk", "xargs", "tee",
+	"diff", "file", "stat", "du", "df", "tree",
+	"which", "type", "whereis", "env", "uname", "whoami", "id", "hostname", "date",
+	"basename", "dirname", "realpath", "readlink",
+	"jq", "yq", "rg", "fd", "bat",
+	"test", "expr", "true", "false", "yes",
+]);
+
+// Read-only subcommand allowlist for tools that are only safe with specific args.
+const SAFE_SUBCOMMANDS: Record<string, Set<string>> = {
+	git: new Set(["status", "log", "diff", "show", "branch", "remote", "ls-files", "ls-tree", "config", "rev-parse", "describe", "blame"]),
+	npm: new Set(["list", "ls", "view", "outdated"]),
+	cargo: new Set(["tree", "metadata", "check"]),
+	go: new Set(["list", "env", "version"]),
+	sed: new Set([]), // sed without -i is read-only; handled below
+	python: new Set(["-c", "--version"]),
+	node: new Set(["--version", "-v"]),
+};
+
+// Hard-block these anywhere in the command string.
+const HARD_BLOCK_PATTERNS = [
+	/\bsudo\b/i,
+	/\brm\s+-[rf]|\brm\s+-[rR]?[fF]|\brm\s+--/i,
+	/\b(mv|cp|mkdir|rmdir|touch|chmod|chown|ln)\s/i,
+	/\bkill(all)?\s+-[0-9A-Z]/i, /\bpkill\b/i,
+	/\b(npm|yarn|pnpm|pip|pipx|brew|apt|apt-get|dnf|yum|pacman|cargo)\s+(install|add|remove|uninstall|update|upgrade)/i,
+	/\bgit\s+(add|commit|push|merge|rebase|reset|checkout|switch|stash|cherry-pick|revert|tag|clean|reflog\s+expire)/i,
+	/\b(curl|wget)\b/i,
+	/\b(vim?|nano|emacs|code|subl)\b/i,
+	/(^|[^<>])>(?!>)/, />>/, // output redirection
 ];
 
-const DESTRUCTIVE_PATTERNS = [
-	/\brm\b/i, /\bmv\b/i, /\bcp\b/i, /\bmkdir\b/i, /\btouch\b/i,
-	/\bchmod\b/i, /\bchown\b/i, /(^|[^<])>(?!>)/, />>/,
-	/\b(npm|yarn|pnpm|pip|brew|apt)\s+(install|add|remove|uninstall)/i,
-	/\bgit\s+(add|commit|push|merge|rebase|reset|checkout|stash)/i,
-	/\bsudo\b/i, /\bkill\b/i, /\b(vim?|nano|emacs|code)\b/i,
-];
+const isSegmentSafe = (seg: string): boolean => {
+	const trimmed = seg.trim();
+	if (!trimmed) return false;
+	const tokens = trimmed.split(/\s+/);
+	const cmd = tokens[0].replace(/^\\/, ""); // strip escape
+	const base = cmd.includes("/") ? cmd.slice(cmd.lastIndexOf("/") + 1) : cmd;
+	if (SAFE_COMMANDS.has(base)) return true;
+	const allowedSubs = SAFE_SUBCOMMANDS[base];
+	if (allowedSubs) {
+		if (base === "sed") {
+			// sed without -i is read-only.
+			return !tokens.some((t) => t === "-i" || t.startsWith("-i") || t === "--in-place");
+		}
+		if (allowedSubs.size === 0) return false;
+		return tokens.slice(1).some((t) => allowedSubs.has(t));
+	}
+	return false;
+};
 
 interface TodoItem {
 	step: number;
@@ -40,7 +77,11 @@ interface TodoItem {
 }
 
 function isSafeCommand(cmd: string): boolean {
-	return !DESTRUCTIVE_PATTERNS.some((p) => p.test(cmd)) && SAFE_PATTERNS.some((p) => p.test(cmd));
+	if (HARD_BLOCK_PATTERNS.some((p) => p.test(cmd))) return false;
+	// Split on pipes and command chains; every segment must be read-only.
+	const segments = cmd.split(/\|\||&&|;|\||&(?!\d)/).map((s) => s.trim()).filter(Boolean);
+	if (segments.length === 0) return false;
+	return segments.every(isSegmentSafe);
 }
 
 function isAssistantMessage(m: AgentMessage): m is AssistantMessage {
@@ -138,8 +179,16 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerShortcut(Key.ctrlAlt("p"), {
+	pi.registerShortcut(Key.alt("tab"), {
 		description: "Toggle plan mode",
+		handler: async (ctx) => togglePlanMode(ctx),
+	});
+	pi.registerShortcut(Key.super("p"), {
+		description: "Toggle plan mode",
+		handler: async (ctx) => togglePlanMode(ctx),
+	});
+	pi.registerShortcut(Key.ctrlAlt("p"), {
+		description: "Toggle plan mode (fallback)",
 		handler: async (ctx) => togglePlanMode(ctx),
 	});
 
