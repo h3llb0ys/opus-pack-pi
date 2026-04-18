@@ -44,6 +44,7 @@ interface BashRun {
 	startedAt: number;
 	command: string;
 	timer: NodeJS.Timeout | null;
+	tickTimer: NodeJS.Timeout | null;
 	lastText: string;
 	shown: boolean;
 }
@@ -85,6 +86,7 @@ export default function (pi: ExtensionAPI) {
 			startedAt: Date.now(),
 			command,
 			timer: null,
+			tickTimer: null,
 			lastText: "",
 			shown: false,
 		};
@@ -98,14 +100,16 @@ export default function (pi: ExtensionAPI) {
 			renderWidget(ctx, run, cfg);
 		}, cfg.minDurationMs);
 
-		// Tick the elapsed counter while visible.
+		// Tick the elapsed counter while visible. Store the timer handle so
+		// tool_execution_end can clear it — otherwise a phantom tick fires
+		// after the widget has already been torn down.
 		const tick = () => {
 			const r = runs.get(event.toolCallId);
-			if (!r || !r.shown) return;
+			if (!r || !r.shown) { run.tickTimer = null; return; }
 			renderWidget(ctx, r, cfg);
-			setTimeout(tick, 1000);
+			run.tickTimer = setTimeout(tick, 1000);
 		};
-		setTimeout(tick, cfg.minDurationMs + 1000);
+		run.tickTimer = setTimeout(tick, cfg.minDurationMs + 1000);
 	});
 
 	pi.on("tool_execution_update", async (event, ctx) => {
@@ -123,6 +127,10 @@ export default function (pi: ExtensionAPI) {
 		if (run.timer) {
 			clearTimeout(run.timer);
 			run.timer = null;
+		}
+		if (run.tickTimer) {
+			clearTimeout(run.tickTimer);
+			run.tickTimer = null;
 		}
 		if (run.shown) {
 			ctx.ui.setWidget("bash-progress", undefined);
