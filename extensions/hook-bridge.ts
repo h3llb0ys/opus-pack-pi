@@ -23,6 +23,7 @@
 
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { isExtensionDisabled, loadSettingsRoot } from "../lib/settings.js";
@@ -42,10 +43,7 @@ type HookEventName =
 
 const DEFAULT_TIMEOUT_MS = 5000;
 
-const SETTINGS_PATH = join(
-	process.env.HOME ?? "/dev/null",
-	".pi/agent/settings.json",
-);
+const SETTINGS_PATH = join(homedir(), ".pi/agent/settings.json");
 
 const safeReadJson = (path: string): HookConfig => {
 	if (path === SETTINGS_PATH) {
