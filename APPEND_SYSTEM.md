@@ -49,6 +49,39 @@
 ### Compact focus
 - `/compact <focus>` — inline focus перебивает `.pi/compact-hints.md`. Пример: `/compact preserve auth migration context`.
 
+### Model router
+- Если в settings включён `modelRouter` — первая строка промпта матчится rules, и turn идёт на указанной модели + thinking level.
+- `/router <level>` — override на один turn. `/router status` — last 5 decisions + current config. `/router off` / `/router on` — toggle в сессии.
+- Провайдер-агностик: работает с Anthropic / Ollama / OpenAI / кастомными proxy.
+- При ручном `/model` switch router автоматически pause до конца сессии — чтоб не перебивать явный выбор.
+
+### Conventions (CLAUDE.md / AGENTS.md)
+- `~/.claude/CLAUDE.md` — глобал. Project `./CLAUDE.md` / `./AGENTS.md` — локал, приоритетнее глобала.
+- Upward walk от cwd до HOME — все найденные файлы мерджатся (ближайшие к cwd = последние = highest priority).
+- `/claude-md` — проверить что подхватилось.
+- Cap `maxTotalChars` в settings (default 20000) — чтоб не раздуть system prompt.
+
+### Session navigation
+- `/resume` — переключиться на другую сессию в том же cwd.
+- `/fork` — создать ветку от выбранного user-message (старая session intact).
+- `/tree` — ASCII-дерево текущей session (current leaf отмечен ●).
+
+### ask_user tool
+- Используй `ask_user({question, choices?})` ТОЛЬКО когда требования реально неоднозначны и нельзя сделать reasonable assumption.
+- Предпочитай `choices` (2-4 опции) над free-form.
+- В non-interactive режиме (pi -p) tool возвращает error — fallback на best judgement.
+- НЕ используй для подтверждения уже согласованного плана.
+
+### Permissions (interactive)
+- При `permissions.interactive: true` — на `confirm` action показывается 4-way picker: allow once / allow session / allow always / deny.
+- "Allow always" сохраняет rule в `~/.pi/agent/settings.local.json` — следующий раз тот же паттерн пройдёт автоматом.
+- Session-scoped allow ̆исчезает при рестарте pi.
+
+### Extension discovery
+- `/pi-search [query]` — ищет community extensions по GitHub topic `pi-package` (sort by stars). Picker → install + reload.
+- GITHUB_TOKEN env опционально, без него 60 rpm unauth.
+- Перед install — warn если stars <3 или last update >2 лет назад.
+
 ### Notifications
 - Desktop notification приходит автоматически по завершении долгих задач (>10s). Не проси пользователя проверить — он сам увидит.
 

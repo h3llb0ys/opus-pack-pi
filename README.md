@@ -25,6 +25,12 @@ Opinionated bundle для запуска Claude Opus 4.7 внутри [pi-coding
 | `status.ts` | Slash `/status` — сводка (extensions, skills, prompts, MCP tools, model, ctx usage). Live statusline: `cwd · branch · model · ctx:X%`. Footer: `ext:N skills:M mcp:K`. |
 | `list-resources.ts` | Slashes `/skills`, `/extensions`, `/prompts` — listing с описаниями (как в Claude Code). |
 | `hook-bridge.ts` | Читает блок `hooks` из `settings.json` в формате Claude Code, запускает shell-команды на pi-события (`PreToolUse` / `PostToolUse` / `SessionStart` / `Stop` / `UserPromptSubmit` / `PreCompact`). Позволяет копипастить CC-конфиги и сторонние hook-скрипты. |
+| `claude-md-loader.ts` | Автоподхват `~/.claude/CLAUDE.md` + upward walk `CLAUDE.md` / `AGENTS.md` в system prompt. `/claude-md` — debug. Mtime-cached. |
+| `model-router.ts` | Heuristic auto-switch модели и thinking level по промпту. `/router <level>`, `/router status`, `/router off`. Provider-agnostic. Status slot `↗ model·level`. |
+| `bash-progress.ts` | Live widget с tail логов и elapsed counter для долгих bash-команд (>2s). Не меняет сам tool. |
+| `ask-user.ts` | LLM-tool `ask_user(question, choices?)` для clarifying questions. Non-interactive → error, fallback на best judgement. |
+| `resume.ts` | `/resume` — switch session, `/fork` — branch от user-message, `/tree` — ASCII session tree. |
+| `pi-search.ts` | `/pi-search [query]` — GitHub topic `pi-package` discovery + interactive install + `/reload`. Cache 1h. |
 
 ### Vendored extensions (из `pi-mono/examples/extensions/`)
 

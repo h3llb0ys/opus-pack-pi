@@ -16,13 +16,54 @@
       "enabled": true
     },
     "permissions": {
-      "_comment": "Granular allow/confirm/deny rules. First match wins. Augments safe-deny (hardcoded net).",
+      "_comment": "Granular allow/confirm/deny rules. First match wins. Augments safe-deny.",
       "default": "allow",
+      "smart": true,
+      "interactive": true,
+      "_interactive_comment": "interactive=true → 4-way prompt (allow once/session/always/deny). 'allow always' persists into settings.local.json.",
       "rules": [
         { "tool": "bash", "pattern": "sudo *", "action": "confirm" },
         { "tool": "edit", "path": ".github/**", "action": "confirm" },
         { "tool": "write", "path": "*.env", "action": "deny" }
       ]
+    },
+    "modelRouter": {
+      "_comment": "Auto-switch model and thinking level per prompt. Provider-agnostic (Anthropic/Ollama/OpenAI/custom).",
+      "enabled": false,
+      "default": "medium",
+      "autoBumpAfterTurns": 0,
+      "levels": {
+        "trivial": { "provider": "anthropic", "model": "claude-haiku-4-5",  "thinking": "minimal" },
+        "medium":  { "provider": "anthropic", "model": "claude-sonnet-4-6", "thinking": "medium"  },
+        "high":    { "provider": "anthropic", "model": "claude-opus-4-7",   "thinking": "high"    },
+        "xhigh":   { "provider": "anthropic", "model": "claude-opus-4-7",   "thinking": "xhigh"   }
+      },
+      "rules": [
+        { "match": "\\b(typo|rename|formatting)\\b",                     "level": "trivial" },
+        { "match": "\\b(refactor|architecture|design|migration)\\b",      "level": "high"    },
+        { "match": "\\b(debug|investigate|root.?cause|flaky)\\b",         "level": "xhigh"   },
+        { "minChars": 2000,                                              "level": "high"    }
+      ]
+    },
+    "bashProgress": {
+      "_comment": "Live widget for long bash commands.",
+      "enabled": true,
+      "minDurationMs": 2000,
+      "tailLines": 5
+    },
+    "claudeMdLoader": {
+      "_comment": "Auto-load CLAUDE.md / AGENTS.md from ~/.claude and cwd walk.",
+      "enabled": true,
+      "includeGlobal": true,
+      "includeWalk": true,
+      "maxTotalChars": 20000
+    },
+    "piSearch": {
+      "_comment": "Community extension discovery via GitHub topic:pi-package.",
+      "enabled": true,
+      "minStars": 0,
+      "cacheTtlMs": 3600000,
+      "denyList": []
     },
     "desktopNotify": {
       "_comment": "OS notification on agent completion.",
