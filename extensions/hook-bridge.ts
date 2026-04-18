@@ -23,10 +23,9 @@
 
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { isExtensionDisabled } from "../lib/settings.js";
+import { isExtensionDisabled, loadSettingsRoot } from "../lib/settings.js";
 
 type HookEntry = { type?: "command"; command: string; timeout?: number };
 type HookGroup = { matcher?: string; hooks: HookEntry[] };
@@ -43,7 +42,16 @@ type HookEventName =
 
 const DEFAULT_TIMEOUT_MS = 5000;
 
+const SETTINGS_PATH = join(
+	process.env.HOME ?? "/dev/null",
+	".pi/agent/settings.json",
+);
+
 const safeReadJson = (path: string): HookConfig => {
+	if (path === SETTINGS_PATH) {
+		const parsed = loadSettingsRoot();
+		return (parsed?.hooks as HookConfig) ?? {};
+	}
 	try {
 		const raw = readFileSync(path, "utf8");
 		const parsed = JSON.parse(raw);
@@ -58,7 +66,7 @@ const safeReadJson = (path: string): HookConfig => {
  * so they fire later — same as CC's effective semantics for additive arrays.
  */
 const loadHooks = (cwd: string): HookConfig => {
-	const global = safeReadJson(join(homedir(), ".pi/agent/settings.json"));
+	const global = safeReadJson(SETTINGS_PATH);
 	const project = safeReadJson(join(cwd, ".pi/settings.json"));
 	const merged: HookConfig = {};
 	for (const cfg of [global, project]) {
