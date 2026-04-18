@@ -15,9 +15,6 @@ Opinionated bundle для запуска Claude Opus 4.7 внутри [pi-coding
 | `rewind.ts` | `/rewind` — undo/rollback: discard changes, undo last commit, reset к произвольному коммиту или stash. |
 | `cost.ts` | `/cost` — дашборд token usage: текущая сессия, за сегодня, за 7 дней с breakdown по дням. |
 | `context.ts` | `/context` — что жрёт контекст: breakdown по типам (system/user/tool), топ tools, топ файлов. |
-| `init.ts` | `/init` — wizard для генерации `AGENTS.md`: stack, build/test/lint, conventions, architecture. |
-| `clear.ts` | `/clear` — быстрая очистка контекста (compact до нуля, session сохранён для `/tree`). |
-| `auto-continue.ts` | Авто-continue при max_tokens — модель сама продолжит без ручного "continue?". |
 | `session-summary.ts` | Авто-резюме при завершении agent'а (если ≥3 tool calls): сколько файлов изменено, команд запущено, ошибок. |
 | `smart-compact.ts` | Custom compaction hints из `.pi/compact-hints.md` или `opus-pack.compactHints`. Сохраняет ключевой контекст при compact. |
 | `desktop-notify.ts` | OS notification (macOS/Linux) по завершении agent'а. Настройка порога длительности + звук. `/notify-test`. |
