@@ -261,13 +261,184 @@ const updateBadge = (ctx: ExtensionContext) => {
 	}
 };
 
+// ── CLI subcommands ────────────────────────────────────────────────────────
+
+const VALID_CATEGORIES: Category[] = ["safety", "tasks", "ui", "integrations", "dev"];
+
+const findExtension = (needle: string): { hit?: ExtensionEntry; suggestions: string[] } => {
+	const lower = needle.toLowerCase();
+	const hit = OPUS_EXTENSIONS.find((e) => e.name.toLowerCase() === lower);
+	if (hit) return { hit, suggestions: [] };
+	const suggestions = OPUS_EXTENSIONS
+		.filter((e) => e.name.toLowerCase().includes(lower) || lower.includes(e.name.toLowerCase()))
+		.map((e) => e.name)
+		.slice(0, 3);
+	return { suggestions };
+};
+
+const formatStatusLine = (): string => {
+	const disabled = listDisabledExtensions();
+	const enabled = OPUS_EXTENSIONS.length - disabled.length;
+	const tail = disabled.length > 0 ? `; disabled: ${disabled.join(", ")}` : "";
+	return `opus-pack: ${enabled}/${OPUS_EXTENSIONS.length} enabled${tail}`;
+};
+
+const formatList = (categoryFilter?: Category): string => {
+	const disabled = new Set(listDisabledExtensions());
+	const lines: string[] = [`═ opus-pack extensions (${OPUS_EXTENSIONS.length - disabled.size}/${OPUS_EXTENSIONS.length} enabled) ═`];
+	for (const cat of CATEGORY_ORDER) {
+		if (categoryFilter && cat !== categoryFilter) continue;
+		const bucket = OPUS_EXTENSIONS.filter((e) => e.category === cat);
+		if (bucket.length === 0) continue;
+		lines.push("", `── ${CATEGORY_LABEL[cat]} ──`);
+		const nameWidth = Math.min(24, bucket.reduce((m, e) => Math.max(m, e.name.length), 0));
+		for (const e of bucket) {
+			const off = disabled.has(e.name);
+			const mark = off ? "[ ]" : "[x]";
+			const crit = e.critical ? " (critical)" : "";
+			lines.push(`  ${mark} ${e.name.padEnd(nameWidth)}  ${e.description.slice(0, 70)}${crit}`);
+		}
+	}
+	return lines.join("\n");
+};
+
+const HELP_TEXT = [
+	"opus-pack — toggle pack extensions",
+	"",
+	"  /opus-pack                  open interactive picker",
+	"  /opus-pack status           one-line enabled/disabled summary",
+	"  /opus-pack list [category]  full table; optional filter (safety|tasks|ui|integrations|dev)",
+	"  /opus-pack on <name>        enable an extension, save + reload",
+	"  /opus-pack off <name>       disable an extension, save + reload",
+	"  /opus-pack off <name> --force  skip interactive confirm for critical extensions",
+	"  /opus-pack reset            re-enable everything (clear disabled list)",
+	"  /opus-pack help             show this text",
+].join("\n");
+
+const runCli = async (
+	ctx: ExtensionContext & { hasUI: boolean },
+	tokens: string[],
+): Promise<void> => {
+	const verb = (tokens[0] ?? "").toLowerCase();
+
+	if (verb === "help" || verb === "-h" || verb === "--help") {
+		ctx.ui.notify(HELP_TEXT, "info");
+		return;
+	}
+
+	if (verb === "status") {
+		ctx.ui.notify(formatStatusLine(), "info");
+		return;
+	}
+
+	if (verb === "list") {
+		const raw = tokens[1]?.toLowerCase();
+		if (raw && !VALID_CATEGORIES.includes(raw as Category)) {
+			ctx.ui.notify(
+				`unknown category "${raw}". Valid: ${VALID_CATEGORIES.join(", ")}.`,
+				"warning",
+			);
+			return;
+		}
+		ctx.ui.notify(formatList(raw as Category | undefined), "info");
+		return;
+	}
+
+	if (verb === "reset") {
+		const disabled = listDisabledExtensions();
+		if (disabled.length === 0) {
+			ctx.ui.notify("opus-pack: nothing to reset, all extensions already enabled", "info");
+			return;
+		}
+		if (ctx.hasUI && disabled.length > 3) {
+			const ok = await ctx.ui.confirm(
+				`Re-enable ${disabled.length} extensions?`,
+				`Currently disabled: ${disabled.join(", ")}`,
+				{ timeout: 30_000 },
+			);
+			if (!ok) { ctx.ui.notify("opus-pack: reset cancelled", "info"); return; }
+		}
+		const errors: string[] = [];
+		for (const name of disabled) {
+			const r = setExtensionDisabled(name, false);
+			if (!r.saved) errors.push(`${name}: ${r.error ?? "unknown"}`);
+		}
+		try { await ctx.reload(); } catch (e) { errors.push(`reload: ${(e as Error).message}`); }
+		if (errors.length > 0) {
+			ctx.ui.notify(`opus-pack: reset partial (${errors.length} error(s))\n  ${errors.join("\n  ")}`, "warning");
+		} else {
+			ctx.ui.notify(`opus-pack: reset — re-enabled ${disabled.length} extension(s)`, "info");
+		}
+		return;
+	}
+
+	if (verb === "on" || verb === "off") {
+		const name = tokens[1];
+		const force = tokens.includes("--force");
+		if (!name) {
+			ctx.ui.notify(`${verb} requires an extension name. Run /opus-pack list for choices.`, "warning");
+			return;
+		}
+		const { hit, suggestions } = findExtension(name);
+		if (!hit) {
+			const suffix = suggestions.length > 0 ? ` Did you mean: ${suggestions.join(", ")}?` : "";
+			ctx.ui.notify(`no such extension: "${name}".${suffix}`, "warning");
+			return;
+		}
+		const currentlyDisabled = listDisabledExtensions().includes(hit.name);
+		if (verb === "on" && !currentlyDisabled) {
+			ctx.ui.notify(`${hit.name} is already enabled`, "info");
+			return;
+		}
+		if (verb === "off" && currentlyDisabled) {
+			ctx.ui.notify(`${hit.name} is already disabled`, "info");
+			return;
+		}
+		if (verb === "off" && hit.critical) {
+			if (!force) {
+				if (ctx.hasUI) {
+					const ok = await promptConfirmCritical(ctx, hit.name);
+					if (!ok) { ctx.ui.notify("opus-pack: cancelled", "info"); return; }
+				} else {
+					ctx.ui.notify(
+						`${hit.name} is security-critical; add --force to disable non-interactively.`,
+						"warning",
+					);
+					return;
+				}
+			}
+		}
+		const r = setExtensionDisabled(hit.name, verb === "off");
+		if (!r.saved) {
+			ctx.ui.notify(`opus-pack: save failed for ${hit.name} — ${r.error ?? "unknown"}`, "error");
+			return;
+		}
+		try { await ctx.reload(); } catch (e) {
+			ctx.ui.notify(`opus-pack: ${hit.name} ${verb === "off" ? "disabled" : "enabled"}, reload failed — ${(e as Error).message}. Run /reload manually.`, "warning");
+			return;
+		}
+		ctx.ui.notify(`opus-pack: ${hit.name} ${verb === "off" ? "disabled" : "enabled"} + reloaded`, "info");
+		return;
+	}
+
+	// Unknown verb — warn + help.
+	ctx.ui.notify(`unknown subcommand: "${verb}"\n\n${HELP_TEXT}`, "warning");
+};
+
 export default function (pi: ExtensionAPI) {
 	void pi; // reserved for future use
 
 	pi.registerCommand("opus-pack", {
-		description: "Toggle on/off for opus-pack extensions (persists to settings.local.json)",
-		handler: async (_args, ctx) => {
-			await runModal(ctx, () => ctx.reload());
+		description:
+			"Toggle pack extensions. No args → modal. " +
+			"Subcommands: status | list [cat] | on <name> | off <name> [--force] | reset | help",
+		handler: async (args, ctx) => {
+			const tokens = (args ?? "").trim().split(/\s+/).filter(Boolean);
+			if (tokens.length === 0) {
+				await runModal(ctx, () => ctx.reload());
+			} else {
+				await runCli(ctx, tokens);
+			}
 			updateBadge(ctx);
 		},
 	});

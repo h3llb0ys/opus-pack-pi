@@ -37,7 +37,7 @@ The installer also pulls selected community packages through native `pi install`
 | `ask-user.ts` | `ask_user(question, choices?)` tool for clarifying questions. In non-interactive mode the tool errors out and the model falls back to best judgement. |
 | `pi-search.ts` | `/pi-search [query]` — GitHub topic `pi-package` discovery + interactive install + `/reload`. 1-hour cache. |
 | `mcp-compress.ts` | Collapses verbose MCP tool results into single-line summaries (`ok memory_save: saved, id=208, deduped`). Recognises `saved`/`id`/`deduplicated`/`episode_id`/`count`/`error`. Configurable under `opus-pack.mcpCompress`. |
-| `opus-pack-config.ts` | `/opus-pack` + `Ctrl+Alt+O` — picker to enable/disable any extension in the pack. Persists to `settings.local.json` under `opus-pack.extensions.disabled`. `Save & Reload` applies without restarting pi. Footer slot `off:N` when anything is disabled. |
+| `opus-pack-config.ts` | `/opus-pack` + `Ctrl+Alt+O` — picker to enable/disable any extension in the pack. Also supports subcommands for scripting / non-interactive use: `status`, `list [cat]`, `on <name>`, `off <name> [--force]`, `reset`, `help`. Persists to `settings.local.json` under `opus-pack.extensions.disabled`. Footer slot `off:N` when anything is disabled. |
 | `edit-log.ts` | `/edit-log` — on-demand history of edit/write operations for the current session (file → tool + time + first-new-line snippet). Nothing is injected into the system prompt; output is on demand. |
 
 ### Vendored extensions (from `pi-mono/examples/extensions/`)
