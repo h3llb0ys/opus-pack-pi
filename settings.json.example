@@ -16,12 +16,13 @@
       "enabled": true
     },
     "permissions": {
-      "_comment": "Granular allow/confirm/deny rules. First match wins. Augments safe-deny.",
+      "_comment": "Granular allow/confirm/deny rules. First match wins. Augments safe-deny. rules start empty — jq deep-merge on update would overwrite (arrays replace, not append) so defaults live here as _example_rules for copy-paste.",
       "default": "allow",
       "smart": true,
       "interactive": true,
       "_interactive_comment": "interactive=true → 4-way prompt (allow once/session/always/deny). 'allow always' persists into settings.local.json.",
-      "rules": [
+      "rules": [],
+      "_example_rules": [
         { "tool": "bash", "pattern": "sudo *", "action": "confirm" },
         { "tool": "edit", "path": ".github/**", "action": "confirm" },
         { "tool": "write", "path": "*.env", "action": "deny" }
@@ -51,7 +52,8 @@
         "xhigh":   { "provider": "ollama", "model": "llama3.1-70b-instruct", "thinking": "off" }
       },
       "levels": {},
-      "rules": [
+      "rules": [],
+      "_example_rules": [
         { "match": "\\b(typo|rename|formatting)\\b",                     "level": "trivial" },
         { "match": "\\b(refactor|architecture|design|migration)\\b",     "level": "high"    },
         { "match": "\\b(debug|investigate|root.?cause|flaky)\\b",        "level": "xhigh"   },
@@ -103,8 +105,9 @@
       "minDuration": 10,
       "sound": true
     },
-    "compactHints": [
-      "_comment: list of topics to preserve during compaction",
+    "_compactHints_comment": "Fill compactHints with project-specific topics to preserve during /compact.",
+    "compactHints": [],
+    "_compactHints_example": [
       "Current file being edited and its recent changes",
       "Test results and error messages",
       "Architecture decisions made in this session"
