@@ -1,6 +1,6 @@
 ---
 name: general-purpose
-description: Multi-step task in an isolated context. Has full toolset. 20-turn cap. Use when explore + verify don't fit.
+description: Multi-step task in an isolated context. Slow tier, full toolset, 20-turn cap. Use when explore/verify don't fit and the work must not pollute the parent context.
 tools: read, write, edit, bash, grep, find, ls
 model: alias:slow
 ---

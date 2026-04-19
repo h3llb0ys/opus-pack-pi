@@ -1,6 +1,6 @@
 ---
 name: scout
-description: Fast codebase recon that returns compressed context for handoff to other agents
+description: Fast read-only recon with bash. Fast tier, structured findings for handoff to another agent. Bulk context gathering without polluting the parent.
 tools: read, grep, find, ls, bash
 model: alias:fast
 ---

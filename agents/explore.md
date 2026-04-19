@@ -1,6 +1,6 @@
 ---
 name: explore
-description: Read-only codebase exploration. Returns one-paragraph summary plus pointers to relevant files. NO implementation.
+description: Read-only deep exploration. Slow tier, thorough one-paragraph summary with file pointers. Use when correctness matters more than speed.
 tools: read, grep, find, ls
 model: alias:slow
 ---

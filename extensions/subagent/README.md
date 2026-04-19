@@ -174,14 +174,30 @@ To keep agent profiles provider-neutral, set aliases once in `settings.json`. Pi
 
 Project agents override user agents with the same name when `agentScope: "both"`.
 
-## Sample Agents
+## Bundled agents
 
-| Agent | Purpose | Model alias | Tools |
-|-------|---------|-------------|-------|
-| `scout` | Fast codebase recon | `alias:fast` | read, grep, find, ls, bash |
-| `planner` | Implementation plans | `alias:balanced` | read, grep, find, ls |
-| `reviewer` | Code review | `alias:balanced` | read, grep, find, ls, bash |
-| `worker` | General-purpose | `alias:balanced` | (all default) |
+Two layers ship with the pack:
+
+| Layer | Location in repo | Agents |
+|---|---|---|
+| Top-level | `agents/` | `explore`, `verify`, `general-purpose` |
+| Subagent-pack | `extensions/subagent/agents/` | `scout`, `planner`, `reviewer`, `worker` |
+
+Both load automatically (see `agents.ts::getBundledAgentDirs`). User / project-level overrides always win.
+
+### Which agent when
+
+| Agent | Tier | Read-only? | Best for |
+|---|---|---|---|
+| `explore` | `slow` | yes | Deep "find X, return a coherent summary". Correctness > speed. One-paragraph output. |
+| `scout` | `fast` | yes (+ bash) | Bulk recon, structured findings to hand off to another agent. Use when you need lots of context quickly. |
+| `verify` | `fast` | yes (+ bash) | Run a test / lint / build command, report PASS/FAIL + output. |
+| `planner` | `balanced` | yes | Produce a concrete implementation plan from scout output + requirements. No writes. |
+| `reviewer` | `balanced` | yes (+ bash for git) | Quality / security / maintainability review on a diff or file set. |
+| `worker` | `balanced` | **no** | Execute a focused implementation task in isolation, full toolset. Usually receives a plan. |
+| `general-purpose` | `slow` | **no** | Fallback when the task doesn't fit the above. Full toolset, 20-turn cap. |
+
+Short rule of thumb: recon with `scout`, plan with `planner`, write with `worker`, verify with `verify`, review with `reviewer`. Pick `explore`/`general-purpose` only when the cheaper tiers don't fit.
 
 ## Workflow Prompts
 

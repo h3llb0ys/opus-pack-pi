@@ -1,6 +1,6 @@
 ---
 name: planner
-description: Creates implementation plans from context and requirements
+description: Produces implementation plans from scout findings + requirements. Balanced tier, read-only. Feeds worker/general-purpose.
 tools: read, grep, find, ls
 model: alias:balanced
 ---

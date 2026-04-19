@@ -1,6 +1,6 @@
 ---
 name: verify
-description: Run tests/lint/build in isolated context. Returns pass/fail plus relevant output. Uses a cheap model by default (see opus-pack.subagent.modelAlias.fast).
+description: Run tests/lint/build in an isolated context. Fast tier, returns PASS/FAIL + relevant output.
 tools: bash, read, grep, find, ls
 model: alias:fast
 ---

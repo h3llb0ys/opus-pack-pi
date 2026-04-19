@@ -1,6 +1,6 @@
 ---
 name: worker
-description: General-purpose subagent with full capabilities, isolated context
+description: General-purpose subagent with full capabilities in an isolated context. Balanced tier, no explicit turn cap. Use after planner output.
 model: alias:balanced
 ---
 

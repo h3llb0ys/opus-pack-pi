@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: Code review specialist for quality and security analysis
+description: Code review specialist: quality, security, maintainability. Balanced tier, read-only + git diff/log/show via bash.
 tools: read, grep, find, ls, bash
 model: alias:balanced
 ---
