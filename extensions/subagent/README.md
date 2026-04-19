@@ -166,7 +166,7 @@ To keep agent profiles provider-neutral, set aliases once in `settings.json`. Pi
 }}}}
 ```
 
-Все shipped-профили используют `alias:fast` / `alias:balanced` / `alias:slow` — смена провайдера это одна правка settings, не все frontmatter'ы. Если alias не задан или пустой — subagent наследует дефолтную модель pi-сессии.
+All shipped profiles use `alias:fast` / `alias:balanced` / `alias:slow`, so switching provider is a one-line settings change rather than touching every frontmatter. If an alias is missing or empty, the subagent inherits the parent pi session's default model.
 
 **Locations:**
 - `~/.pi/agent/agents/*.md` - User-level (always loaded)
