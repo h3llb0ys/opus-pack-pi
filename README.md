@@ -72,8 +72,8 @@ Opinionated bundle расширений для [pi-coding-agent](https://github.
 Локально (dev):
 
 ```sh
-git clone https://github.com/h3llb0ys/opus-pack-pi ~/extra/opus-pack-pi
-cd ~/extra/opus-pack-pi
+git clone https://github.com/h3llb0ys/opus-pack-pi
+cd opus-pack-pi
 ./install.sh
 ```
 
@@ -177,7 +177,7 @@ MCP-серверы живут отдельно в `~/.pi/agent/mcp.json` (фор
 
 ## Dev-loop
 
-Редактируй `extensions/*.ts` прямо в `~/extra/opus-pack-pi/`. Внутри pi вызови `/reload` — подхватит без рестарта. pi ссылается на путь, не копирует файлы.
+Редактируй `extensions/*.ts` прямо в папке репозитория. Внутри pi вызови `/reload` — подхватит без рестарта. pi ссылается на путь, не копирует файлы.
 
 Когда готов релиз:
 

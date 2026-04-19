@@ -35,13 +35,18 @@ ok "settings.json: $SETTINGS"
 # 3. Community packages
 PACKAGES=(
 	"git:github.com/obra/superpowers"
-	"git:github.com/rynfar/meridian"
 	"git:github.com/viartemev/pi-rtk-rewrite"
 	"npm:pi-mcp-adapter"
 	"git:github.com/tmustier/pi-extensions"
 	"git:github.com/MasuRii/pi-tool-display"
 	"git:github.com/nicobailon/pi-web-access"
 	"git:github.com/viartemev/pi-working-message"
+)
+
+# Anthropic-only: proxy for Claude Max subscription. Skipped unless explicitly requested
+# or already installed. Pass ANTHROPIC=1 to install.
+ANTHROPIC_PKGS=(
+	"git:github.com/rynfar/meridian"
 )
 
 INSTALLED="$(pi list 2>/dev/null || true)"
@@ -54,6 +59,19 @@ for pkg in "${PACKAGES[@]}"; do
 		pi install "$pkg" || warn "не удалось установить $pkg (продолжаем)"
 	fi
 done
+
+# 3b. Anthropic-only packages (meridian — Claude Max proxy)
+if [ "${ANTHROPIC:-0}" = "1" ]; then
+	for pkg in "${ANTHROPIC_PKGS[@]}"; do
+		short="${pkg##*/}"
+		if grep -qF "$pkg" <<< "$INSTALLED" || grep -qF "$short" <<< "$INSTALLED"; then
+			log skip "$pkg"
+		else
+			log install "$pkg"
+			pi install "$pkg" || warn "не удалось установить $pkg (продолжаем)"
+		fi
+	done
+fi
 
 # 4. Local opus-pack-pi
 if grep -qF "$REPO_DIR" <<< "$INSTALLED"; then
