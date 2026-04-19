@@ -11,6 +11,7 @@
 ### Discipline
 
 - **Verify before claim.** Run the command, read the output, then assert. "Should work" is a guess, not a claim.
+- **No unverified generalizations.** If you're making a factual claim about the codebase, architecture, features, or configuration — read the relevant files or run a command first. "I think", "most likely", "probably" about project specifics are red flags: verify or say "I don't know, need to check".
 - **Root cause before fix.** Don't paper over symptoms with workarounds. If the symptom is unclear, invoke the `systematic-debugging` skill.
 - Don't write "what the code does" comments. Reserve comments for *why* on non-obvious code: hidden constraints, workarounds, surprising invariants.
 - Never `git commit --no-verify`, `git push --force` on `main`/`master`, or `rm -rf` without an explicit request from the user.
@@ -30,7 +31,7 @@
 
 ### Long-running tasks
 
-- **One-shot (build / test / migration):** `Agent(subagent_type: "verify", task: "run X, report pass/fail")`. Uses `alias:fast` (see `opus-pack.subagent.modelAlias`) and returns a structured result.
+- **One-shot (build / test / migration):** call the `subagent` tool with `agent: "scout"` (or a project-defined agent). `scout.md` uses `model: alias:fast` (see `opus-pack.subagent.modelAlias`) and returns a structured result.
 - **Watch / dev-server:** pi-native detach.
   ```
   cmd > /tmp/pi-bg-<slug>.log 2>&1 & echo $! > /tmp/pi-bg-<slug>.pid
@@ -94,9 +95,10 @@
 
 ### Extension toggles (opus-pack)
 
-- `/opus-pack` or `Ctrl+Alt+O` opens a picker to enable or disable any pack extension.
+- `/opus-pack` (no args) or `Ctrl+Alt+O` opens a modal picker to enable or disable any pack extension.
+- Non-interactive subcommands: `/opus-pack status | list [category] | on <name> | off <name> [--force] | reset | help`.
 - State lives in `~/.pi/agent/settings.local.json` under `opus-pack.extensions.disabled`.
-- Disabling `safe-deny` requires explicit confirmation (security-critical).
+- Disabling `safe-deny` requires `--force` on the CLI or explicit confirmation in the modal (security-critical).
 - `Save & Reload` applies without restarting pi. `Save` alone applies on the next manual `/reload`.
 - Footer slot `off:N` appears when anything is disabled.
 - `/extensions` prints a read-only health dashboard of every pack extension.
@@ -107,21 +109,35 @@
 
 ### Thinking-effort presets
 
+Level names come from `opus-pack.modelRouter.levels` (user-configured). Default is `medium`. A typical setup:
+
 - `low` — typos, formatting.
 - `medium` — single-file feature, debugging a known surface.
 - `high` — cross-file refactor, design questions, non-obvious bug.
 - `xhigh` — architecture work, ambiguous specs, root-cause hunts.
 
-### Subagents (via the Agent tool)
+Your own `levels` dict may differ — `/router status` prints the active set.
 
-- `explore` — pattern search / "find X" in large codebases. Returns a one-paragraph summary; does **not** implement.
-- `scout` — fast codebase recon with bash. Structured findings for handoff to another agent.
-- `verify` — runs tests / lint / build. Returns pass/fail + relevant output.
+### Subagents (via the `subagent` tool)
+
+Bundled agents live in `extensions/subagent/agents/`:
+
+- `scout` — fast codebase recon with bash. Structured findings for handoff to another agent. Uses `model: alias:fast`.
 - `planner` — produces an implementation plan from scout findings + requirements. Read-only.
 - `reviewer` — quality / security / maintainability review. Read-only + git diff/log/show via bash.
 - `worker` — general-purpose writer. Balanced tier, full toolset; usually consumes a planner's output.
-- `general-purpose` — fallback for tasks that don't fit the above. 20-turn cap.
 
-Use a subagent when isolated context genuinely helps (5+ files to search, or verification worth separating from the main flow). For small lookups, inline work is cheaper.
+Project-local agents: drop `*.md` into `.pi/agents/`; enable by passing `agentScope: "both"` (or `"project"`). The first call in a session prompts for confirmation before running project agents.
+
+Invocation modes on the `subagent` tool:
+
+- `single` — `{ agent, task }`
+- `parallel` — `{ tasks: [{ agent, task }, ...] }` (concurrency 4, max 8)
+- `chain` — `{ chain: [{ agent, task }, ...] }` with `{previous}` placeholder
+- `continue_from: <runId>` — replay a prior run's context into a fresh one-shot (single/chain only)
+
+Runs are persisted to `.pi/agents/<runId>.jsonl` for inspection and `continue_from`.
+
+Use a subagent when isolated context genuinely helps (multi-file search, verification worth separating from the main flow). For small lookups, inline work is cheaper.
 
 <!-- ## Opus Pack rules END -->
