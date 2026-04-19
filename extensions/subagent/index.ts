@@ -72,7 +72,13 @@ interface PreviousRunSummary {
 	turns: number;
 }
 
+const RUN_ID_RE = /^[\w.-]+$/;
+
 const loadPreviousRun = (projectRoot: string, runId: string): PreviousRunSummary | null => {
+	// Guard against path traversal. runId is user-supplied and interpolated
+	// into a filesystem path; reject anything with slashes, backslashes, or
+	// path segments before touching fs.
+	if (!RUN_ID_RE.test(runId)) return null;
 	const full = persistPath(projectRoot, runId);
 	if (!fs.existsSync(full)) return null;
 	let lines: string[];

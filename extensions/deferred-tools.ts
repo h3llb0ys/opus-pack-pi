@@ -45,9 +45,12 @@ const compileMcp = (pattern: string): RegExp => {
 export default function (pi: ExtensionAPI) {
 	if (isExtensionDisabled("deferred-tools")) return;
 
-	// Names added via tool_load. Cleared after each turn unless they match
-	// the permanent whitelist.
+	// Names added via tool_load. Kept visible for the turn they were loaded
+	// in AND the following turn, so the model actually gets a chance to call
+	// the tool. Without the +1 delay, turn_end of the loading turn would
+	// clear the set before the next LLM request sees it.
 	const tempVisible = new Set<string>();
+	let loadedThisTurn = false;
 
 	const allowed = (toolName: string, cfg: DeferredToolsConfig, mcpRe: RegExp, extraRes: RegExp[]): boolean => {
 		if (toolName === "tool_search" || toolName === "tool_load") return true;
@@ -80,7 +83,14 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("turn_end", async (_event, ctx) => {
-		// One-shot: drop temp-visible names unless the user re-requested them.
+		// Two-phase clear. Turn that set tempVisible only flips the flag;
+		// the turn AFTER that actually drops the names, since the provider
+		// request for "next turn" uses the whitelist computed between these
+		// two turn_ends.
+		if (loadedThisTurn) {
+			loadedThisTurn = false;
+			return;
+		}
 		if (tempVisible.size > 0) {
 			tempVisible.clear();
 			applyWhitelist(ctx);
@@ -175,6 +185,7 @@ export default function (pi: ExtensionAPI) {
 					unknown.push(name);
 				}
 			}
+			if (added.length > 0) loadedThisTurn = true;
 			applyWhitelist(ctx);
 			const parts: string[] = [];
 			if (added.length > 0) parts.push(`loaded (usable next turn): ${added.join(", ")}`);
