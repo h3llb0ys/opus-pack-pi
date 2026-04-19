@@ -14,6 +14,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { isExtensionDisabled, loadOpusPackSection } from "../lib/settings.js";
+import { extractStreamText } from "../lib/input-helpers.js";
 
 interface ProgressConfig {
 	enabled: boolean;
@@ -40,16 +41,6 @@ interface BashRun {
 }
 
 const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-
-const extractText = (partial: unknown): string => {
-	if (!partial || typeof partial !== "object") return "";
-	const result = partial as { content?: Array<{ type?: string; text?: string }> };
-	if (!Array.isArray(result.content)) return "";
-	return result.content
-		.filter((c) => c?.type === "text" && typeof c.text === "string")
-		.map((c) => c.text as string)
-		.join("");
-};
 
 const truncateTail = (text: string, lines: number): string => {
 	const arr = text.split("\n");
@@ -108,7 +99,7 @@ export default function (pi: ExtensionAPI) {
 	pi.on("tool_execution_update", async (event, ctx) => {
 		const run = runs.get(event.toolCallId);
 		if (!run) return;
-		run.lastText = extractText(event.partialResult);
+		run.lastText = extractStreamText(event.partialResult);
 		if (run.shown) {
 			renderWidget(ctx, run, loadConfig());
 		}

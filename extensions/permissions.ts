@@ -29,6 +29,7 @@ import {
 	loadProjectSettingsRoot,
 	loadSettingsRoot,
 } from "../lib/settings.js";
+import { extractPath } from "../lib/input-helpers.js";
 
 type Action = "allow" | "confirm" | "deny";
 
@@ -137,7 +138,7 @@ const buildAllowRule = (toolName: string, input: Record<string, unknown>, cwd: s
 		const safeToken = firstToken.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 		return { tool: "bash", pattern: `^${safeToken}\\b`, action: "allow" };
 	}
-	const raw = String(input["path"] ?? input["file_path"] ?? "");
+	const raw = extractPath(input);
 	if (!raw) return { tool: toolName, action: "allow" };
 	const abs = raw.startsWith("/") ? raw : resolve(cwd, raw);
 	const rel = abs.startsWith(cwd + "/") ? abs.slice(cwd.length + 1) : abs;
@@ -154,7 +155,7 @@ const matchRule = (rule: Rule, toolName: string, toolInput: Record<string, unkno
 	if (rule.tool !== "*" && rule.tool !== toolName) return false;
 
 	if (rule.path) {
-		const rawPath = String(toolInput["path"] ?? toolInput["file_path"] ?? "");
+		const rawPath = extractPath(toolInput);
 		if (!rawPath) return false;
 		const abs = rawPath.startsWith("/") ? rawPath : resolve(cwd, rawPath);
 		const rel = abs.startsWith(cwd + "/") ? abs.slice(cwd.length + 1) : abs;
@@ -271,7 +272,7 @@ const formatHunks = (diff: DiffLine[]): string => {
 // contents (falls back to "?" when the file is absent or the oldText can't be
 // located — e.g. edit against a staged but unread file).
 const buildEditPreview = (input: Record<string, unknown>, cwd: string): string => {
-	const filePath = String(input["path"] ?? input["file_path"] ?? "");
+	const filePath = extractPath(input);
 	const edits = input["edits"] as Array<{ oldText: string; newText: string }> | undefined;
 	const absPath = filePath.startsWith("/") ? filePath : resolve(cwd, filePath);
 	let source = "";
@@ -305,7 +306,7 @@ const buildEditPreview = (input: Record<string, unknown>, cwd: string): string =
 // For rewrites: real line-diff between disk and proposed content so the user
 // sees what actually changes, not just the first few lines of the new file.
 const buildWritePreview = (input: Record<string, unknown>, cwd: string): string => {
-	const filePath = String(input["path"] ?? input["file_path"] ?? "");
+	const filePath = extractPath(input);
 	const content = String(input["content"] ?? "");
 	const absPath = filePath.startsWith("/") ? filePath : resolve(cwd, filePath);
 
@@ -354,8 +355,7 @@ export default function (pi: ExtensionAPI) {
 	// Track files the agent reads
 	pi.on("tool_call", async (event) => {
 		if (event.toolName === "read") {
-			const rawPath = String((event.input as { path?: string; file_path?: string }).path
-				?? (event.input as { file_path?: string }).file_path ?? "");
+			const rawPath = extractPath(event.input);
 			if (rawPath) readFiles.add(rawPath);
 		}
 	});
@@ -391,7 +391,7 @@ export default function (pi: ExtensionAPI) {
 
 		// Smart mode: auto-approve edits to files the agent has read
 		if (config.smart && (event.toolName === "edit" || event.toolName === "write")) {
-			const rawPath = String(input["path"] ?? input["file_path"] ?? "");
+			const rawPath = extractPath(input);
 			if (rawPath && readFiles.has(rawPath)) {
 				action = "allow";
 			}

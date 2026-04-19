@@ -44,7 +44,7 @@ const invalidateCache = (path: string) => {
  * Read the `opus-pack.<section>` block, merged over the supplied defaults.
  * Returns a fresh object each call so callers can mutate safely.
  */
-export function loadOpusPackSection<T extends Record<string, unknown>>(section: string, defaults: T): T {
+export function loadOpusPackSection<T extends object>(section: string, defaults: T): T {
 	const parsed = loadRawFrom(SETTINGS_PATH);
 	const user = parsed?.["opus-pack"]?.[section];
 	if (user && typeof user === "object") {

@@ -25,6 +25,7 @@ import { Container, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.js";
 import { loadOpusPackSection } from "../../lib/settings.js";
+import { extractPath, safeJsonParse } from "../../lib/input-helpers.js";
 
 interface SubagentSettings {
 	modelAlias: Record<string, string>;
@@ -89,11 +90,14 @@ const persistEntry = (projectRoot: string, runId: string, entry: Record<string, 
 
 const firstText = (msg: Message): string => {
 	if (msg.role !== "assistant" && msg.role !== "user") return "";
-	const content = (msg as any).content;
+	const content: unknown = (msg as { content?: unknown }).content;
 	if (typeof content === "string") return content;
 	if (!Array.isArray(content)) return "";
 	for (const part of content) {
-		if (part?.type === "text" && typeof part.text === "string") return part.text;
+		if (part && typeof part === "object") {
+			const p = part as { type?: unknown; text?: unknown };
+			if (p.type === "text" && typeof p.text === "string") return p.text;
+		}
 	}
 	return "";
 };
@@ -127,11 +131,11 @@ const loadPreviousRun = (projectRoot: string, runId: string): PreviousRunSummary
 	const seenPaths = new Set<string>();
 	const assistantTexts: string[] = [];
 	for (const line of lines) {
-		let entry: any;
-		try { entry = JSON.parse(line); } catch { continue; }
+		const entry = safeJsonParse<Record<string, unknown>>(line);
+		if (!entry) continue;
 		if (entry.type === "run_meta") {
-			out.agent = entry.agent;
-			out.task = entry.task;
+			if (typeof entry.agent === "string") out.agent = entry.agent;
+			if (typeof entry.task === "string") out.task = entry.task;
 			continue;
 		}
 		if (entry.type === "message" && entry.message) {
@@ -143,9 +147,9 @@ const loadPreviousRun = (projectRoot: string, runId: string): PreviousRunSummary
 			}
 		}
 		if (entry.type === "tool_result" && entry.message) {
-			const tr = entry.message as any;
-			const input = tr?.toolCall?.arguments ?? tr?.input ?? {};
-			const p = String(input?.path ?? input?.file_path ?? "").trim();
+			const tr = entry.message as { toolCall?: { arguments?: unknown }; input?: unknown };
+			const input = tr.toolCall?.arguments ?? tr.input ?? {};
+			const p = extractPath(input).trim();
 			if (p && !seenPaths.has(p)) { seenPaths.add(p); out.touchedPaths.push(p); }
 		}
 	}
@@ -489,12 +493,8 @@ async function runSingleAgent(
 
 			const processLine = (line: string) => {
 				if (!line.trim()) return;
-				let event: any;
-				try {
-					event = JSON.parse(line);
-				} catch {
-					return;
-				}
+				const event = safeJsonParse<{ type?: string; message?: unknown }>(line);
+				if (!event) return;
 
 				if (event.type === "message_end" && event.message) {
 					const msg = event.message as Message;
@@ -632,18 +632,6 @@ export default function (pi: ExtensionAPI) {
 			const confirmProjectAgents = params.confirmProjectAgents ?? true;
 
 			const projectRoot = ctx.cwd;
-			let continueSummary: string | null = null;
-			if (params.continue_from) {
-				const prev = loadPreviousRun(projectRoot, params.continue_from);
-				if (!prev) {
-					return {
-						content: [{ type: "text", text: `continue_from: no run "${params.continue_from}" at ${PERSIST_DIR}/. Nothing to continue.` }],
-						details: makeDetails(hasChain ? "chain" : hasTasks ? "parallel" : "single")([]),
-						isError: true,
-					};
-				}
-				continueSummary = "PREVIOUS RUN SUMMARY (continue from here):\n\n" + formatContinuationPreamble(prev);
-			}
 
 			const hasChain = (params.chain?.length ?? 0) > 0;
 			const hasTasks = (params.tasks?.length ?? 0) > 0;
@@ -658,6 +646,19 @@ export default function (pi: ExtensionAPI) {
 					projectAgentsDir: discovery.projectAgentsDir,
 					results,
 				});
+
+			let continueSummary: string | null = null;
+			if (params.continue_from) {
+				const prev = loadPreviousRun(projectRoot, params.continue_from);
+				if (!prev) {
+					return {
+						content: [{ type: "text", text: `continue_from: no run "${params.continue_from}" at ${PERSIST_DIR}/. Nothing to continue.` }],
+						details: makeDetails(hasChain ? "chain" : hasTasks ? "parallel" : "single")([]),
+						isError: true,
+					};
+				}
+				continueSummary = "PREVIOUS RUN SUMMARY (continue from here):\n\n" + formatContinuationPreamble(prev);
+			}
 
 			if (modeCount !== 1) {
 				const available = agents.map((a) => `${a.name} (${a.source})`).join(", ") || "none";

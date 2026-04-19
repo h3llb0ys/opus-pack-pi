@@ -10,6 +10,7 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { isExtensionDisabled } from "../lib/settings.js";
+import { extractPath, firstNonEmptyLine } from "../lib/input-helpers.js";
 
 interface LogEntry {
 	tool: "edit" | "write";
@@ -33,31 +34,17 @@ const extractEditSnippet = (input: unknown): string => {
 	const obj = input as Record<string, unknown>;
 	const edits = obj.edits as Array<{ oldText?: string; newText?: string }> | undefined;
 	if (Array.isArray(edits) && edits.length > 0) {
-		const first = edits[0];
-		const newFirstLine = String(first.newText ?? "").split("\n").find((l) => l.trim().length > 0) ?? "";
-		return newFirstLine.trim().slice(0, MAX_SNIPPET_CHARS);
+		return firstNonEmptyLine(String(edits[0].newText ?? ""), MAX_SNIPPET_CHARS);
 	}
-	const newText = String(obj.newText ?? "");
-	if (newText) {
-		const firstLine = newText.split("\n").find((l) => l.trim().length > 0) ?? "";
-		return firstLine.trim().slice(0, MAX_SNIPPET_CHARS);
-	}
-	return "";
+	return firstNonEmptyLine(String(obj.newText ?? ""), MAX_SNIPPET_CHARS);
 };
 
 const extractWriteSnippet = (input: unknown): string => {
 	if (!input || typeof input !== "object") return "";
 	const content = String((input as { content?: string }).content ?? "");
 	if (!content) return "(empty)";
-	const firstLine = content.split("\n").find((l) => l.trim().length > 0) ?? "";
 	const lineCount = content.split("\n").length;
-	return `${firstLine.trim().slice(0, MAX_SNIPPET_CHARS - 20)} (${lineCount} lines)`;
-};
-
-const extractPath = (input: unknown): string => {
-	if (!input || typeof input !== "object") return "";
-	const obj = input as Record<string, unknown>;
-	return String(obj.path ?? obj.file_path ?? "");
+	return `${firstNonEmptyLine(content, MAX_SNIPPET_CHARS - 20)} (${lineCount} lines)`;
 };
 
 export default function (pi: ExtensionAPI) {

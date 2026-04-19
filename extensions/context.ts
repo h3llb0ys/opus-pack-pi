@@ -8,6 +8,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { isExtensionDisabled } from "../lib/settings.js";
+import { extractPath } from "../lib/input-helpers.js";
 
 interface ContextBreakdown {
 	systemPrompt: number;
@@ -41,10 +42,6 @@ const analyzeSession = (ctx: ExtensionContext): ContextBreakdown => {
 			bd.totalEntries++;
 			const msg = entry.message;
 
-			if (msg.role === "system") {
-				bd.systemPrompt += estimateTokens(typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content));
-			}
-
 			if (msg.role === "user") {
 				if (typeof msg.content === "string") {
 					bd.userMessages += estimateTokens(msg.content);
@@ -66,22 +63,14 @@ const analyzeSession = (ctx: ExtensionContext): ContextBreakdown => {
 							bd.toolCalls++;
 							const name = part.name ?? "unknown";
 							bd.toolCallCounts[name] = (bd.toolCallCounts[name] ?? 0) + 1;
-							// Track file paths for read/edit/write
-							const args = part.arguments as Record<string, unknown> | undefined;
-							if (args) {
-								const filePath = String(args.path ?? args.file_path ?? "");
-								if (filePath) bd.fileReadCounts[filePath] = (bd.fileReadCounts[filePath] ?? 0) + 1;
-							}
+							const filePath = extractPath(part.arguments);
+							if (filePath) bd.fileReadCounts[filePath] = (bd.fileReadCounts[filePath] ?? 0) + 1;
 						}
 					}
 				}
-				// Count usage from assistant messages
-				if (msg.usage?.totalTokens) {
-					// Already counted via content estimation
-				}
 			}
 
-			if (msg.role === "toolResult" || msg.role === "tool_result") {
+			if (msg.role === "toolResult") {
 				if (typeof msg.content === "string") {
 					bd.toolResults += estimateTokens(msg.content);
 				} else if (Array.isArray(msg.content)) {
@@ -120,7 +109,7 @@ export default function (pi: ExtensionAPI) {
 
 			const total = bd.systemPrompt + bd.userMessages + bd.assistantText + bd.toolCalls + bd.toolResults;
 			const pct = usage?.percent ?? 0;
-			const maxTokens = usage?.maxTokens ?? 200_000;
+			const maxTokens = usage?.contextWindow ?? 200_000;
 
 			const lines: string[] = [
 				"═══ Context Window ═══",

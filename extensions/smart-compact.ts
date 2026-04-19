@@ -18,6 +18,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { isExtensionDisabled, loadSettingsRoot } from "../lib/settings.js";
+import { extractPath, firstLineFromContent } from "../lib/input-helpers.js";
 
 const loadHints = (cwd: string): string | null => {
 	// Project-local .pi/compact-hints.md
@@ -48,25 +49,9 @@ const MAX_EDITS = 30;
 const MAX_ERRORS = 15;
 const MAX_ADVISOR_CHARS = 4_000;
 
-const extractPath = (input: unknown): string => {
-	if (!input || typeof input !== "object") return "";
-	const obj = input as Record<string, unknown>;
-	return String(obj.path ?? obj.file_path ?? "");
-};
+const ERROR_SNIPPET_CHARS = 140;
 
-const extractErrorSnippet = (content: unknown): string => {
-	if (!Array.isArray(content)) return "";
-	for (const part of content) {
-		if (part && typeof part === "object" && (part as { type?: string }).type === "text") {
-			const text = String((part as { text?: string }).text ?? "");
-			if (!text) continue;
-			// First non-empty line, trimmed to 140 chars.
-			const firstLine = text.split("\n").find((l) => l.trim().length > 0) ?? "";
-			return firstLine.trim().slice(0, 140);
-		}
-	}
-	return "";
-};
+const extractErrorSnippet = (content: unknown): string => firstLineFromContent(content, ERROR_SNIPPET_CHARS);
 
 const formatAdvisor = (edits: EditLogEntry[], errors: ErrorLogEntry[]): string | null => {
 	const lines: string[] = [];
