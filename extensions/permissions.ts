@@ -173,56 +173,163 @@ const matchRule = (rule: Rule, toolName: string, toolInput: Record<string, unkno
 	return true;
 };
 
-// Build a diff preview for edit tool calls
-const buildEditPreview = (input: Record<string, unknown>): string => {
+/**
+ * Naive line-diff with small lookahead. Not LCS-optimal but catches the
+ * common shapes (inserted block, deleted block, modified line) without
+ * pulling in a diff dependency. Output is a list of hunks of the form:
+ *   " context"
+ *   "-old"
+ *   "+new"
+ * Truncated at MAX_DIFF_LINES so a huge rewrite doesn't spam the prompt.
+ */
+const LOOKAHEAD = 3;
+const MAX_DIFF_LINES = 40;
+const CONTEXT_LINES = 2;
+
+interface DiffLine { tag: " " | "-" | "+"; text: string; aLine?: number; bLine?: number }
+
+const naiveLineDiff = (oldText: string, newText: string): DiffLine[] => {
+	const A = oldText.split("\n");
+	const B = newText.split("\n");
+	const out: DiffLine[] = [];
+	let i = 0, j = 0;
+	while (i < A.length && j < B.length) {
+		if (A[i] === B[j]) {
+			out.push({ tag: " ", text: A[i], aLine: i + 1, bLine: j + 1 });
+			i++; j++;
+			continue;
+		}
+		// Is A[i] a few lines ahead in B? Then B inserted lines.
+		let inserted = -1;
+		for (let k = 1; k <= LOOKAHEAD && j + k < B.length; k++) {
+			if (A[i] === B[j + k]) { inserted = k; break; }
+		}
+		if (inserted > 0) {
+			for (let k = 0; k < inserted; k++) out.push({ tag: "+", text: B[j + k], bLine: j + 1 + k });
+			j += inserted;
+			continue;
+		}
+		// Is B[j] a few lines ahead in A? Then A deleted lines.
+		let deleted = -1;
+		for (let k = 1; k <= LOOKAHEAD && i + k < A.length; k++) {
+			if (B[j] === A[i + k]) { deleted = k; break; }
+		}
+		if (deleted > 0) {
+			for (let k = 0; k < deleted; k++) out.push({ tag: "-", text: A[i + k], aLine: i + 1 + k });
+			i += deleted;
+			continue;
+		}
+		// Neither side matches — treat as modified line pair.
+		out.push({ tag: "-", text: A[i], aLine: i + 1 });
+		out.push({ tag: "+", text: B[j], bLine: j + 1 });
+		i++; j++;
+	}
+	// Tail.
+	while (i < A.length) { out.push({ tag: "-", text: A[i], aLine: i + 1 }); i++; }
+	while (j < B.length) { out.push({ tag: "+", text: B[j], bLine: j + 1 }); j++; }
+	return out;
+};
+
+/**
+ * Format a DiffLine sequence into hunks with limited context around changes.
+ * Collapses long runs of unchanged lines between changes.
+ */
+const formatHunks = (diff: DiffLine[]): string => {
+	// Identify change indices.
+	const changed = diff.map((d, i) => (d.tag !== " " ? i : -1)).filter((i) => i >= 0);
+	if (changed.length === 0) return "(no textual changes)";
+	// Build ranges [start..end] of changes within CONTEXT_LINES of each other.
+	const ranges: Array<[number, number]> = [];
+	for (const ci of changed) {
+		const lo = Math.max(0, ci - CONTEXT_LINES);
+		const hi = Math.min(diff.length - 1, ci + CONTEXT_LINES);
+		if (ranges.length && ranges[ranges.length - 1][1] >= lo - 1) {
+			ranges[ranges.length - 1][1] = Math.max(ranges[ranges.length - 1][1], hi);
+		} else {
+			ranges.push([lo, hi]);
+		}
+	}
+	const lines: string[] = [];
+	let emitted = 0;
+	for (const [lo, hi] of ranges) {
+		if (emitted >= MAX_DIFF_LINES) { lines.push(`  ... (truncated, ${diff.length - emitted} more lines)`); break; }
+		const first = diff[lo];
+		const anchor = first.aLine ?? first.bLine ?? 0;
+		lines.push(`@@ line ${anchor} @@`);
+		for (let k = lo; k <= hi; k++) {
+			if (emitted >= MAX_DIFF_LINES) { lines.push(`  ... (truncated)`); break; }
+			const d = diff[k];
+			lines.push(`${d.tag} ${d.text}`);
+			emitted++;
+		}
+	}
+	return lines.join("\n");
+};
+
+// Build a diff preview for edit tool calls. Each edit hunk now carries an
+// approximate line number derived from indexOf(oldText) in the current file
+// contents (falls back to "?" when the file is absent or the oldText can't be
+// located — e.g. edit against a staged but unread file).
+const buildEditPreview = (input: Record<string, unknown>, cwd: string): string => {
 	const filePath = String(input["path"] ?? input["file_path"] ?? "");
 	const edits = input["edits"] as Array<{ oldText: string; newText: string }> | undefined;
+	const absPath = filePath.startsWith("/") ? filePath : resolve(cwd, filePath);
+	let source = "";
+	try { source = existsSync(absPath) ? readFileSync(absPath, "utf8") : ""; } catch { /* ignore */ }
+	const lineOf = (needle: string): number | null => {
+		if (!source || !needle) return null;
+		const idx = source.indexOf(needle);
+		if (idx < 0) return null;
+		return source.slice(0, idx).split("\n").length;
+	};
 
 	if (!edits || edits.length === 0) {
-		// Single oldText/newText format
 		const oldText = String(input["oldText"] ?? "");
 		const newText = String(input["newText"] ?? "");
 		if (!oldText && !newText) return filePath;
-		return `${filePath}\n${formatMiniDiff(oldText, newText)}`;
+		const at = lineOf(oldText);
+		const hunk = formatHunks(naiveLineDiff(oldText, newText));
+		return `${filePath}${at ? ` (line ~${at})` : ""}\n${hunk}`;
 	}
 
 	const parts = edits.map((e, i) => {
-		const oldLines = e.oldText.split("\n");
-		const newLines = e.newText.split("\n");
-		const maxPreview = 8;
-		const oldPreview = oldLines.slice(0, maxPreview).map((l) => `- ${l}`).join("\n");
-		const newPreview = newLines.slice(0, maxPreview).map((l) => `+ ${l}`).join("\n");
-		const suffix = oldLines.length > maxPreview ? `\n  ... (${oldLines.length} lines)` : "";
-		return `@@ edit ${i + 1} @@\n${oldPreview}\n${newPreview}${suffix}`;
+		const at = lineOf(e.oldText);
+		const hunk = formatHunks(naiveLineDiff(e.oldText, e.newText));
+		return `@@ edit ${i + 1}${at ? `, line ~${at}` : ""} @@\n${hunk}`;
 	});
 
 	return `${filePath}\n${parts.join("\n")}`;
 };
 
-const formatMiniDiff = (oldText: string, newText: string): string => {
-	const oldLines = oldText.split("\n").slice(0, 6).map((l) => `- ${l}`);
-	const newLines = newText.split("\n").slice(0, 6).map((l) => `+ ${l}`);
-	return [...oldLines, ...newLines].join("\n");
-};
-
-// Build preview for write tool calls (new file content)
+// Build preview for write tool calls. For new files: head of new content.
+// For rewrites: real line-diff between disk and proposed content so the user
+// sees what actually changes, not just the first few lines of the new file.
 const buildWritePreview = (input: Record<string, unknown>, cwd: string): string => {
 	const filePath = String(input["path"] ?? input["file_path"] ?? "");
 	const content = String(input["content"] ?? "");
 	const absPath = filePath.startsWith("/") ? filePath : resolve(cwd, filePath);
 
 	if (!existsSync(absPath)) {
-		// New file
 		const lines = content.split("\n").slice(0, 8).map((l) => `+ ${l}`).join("\n");
 		const total = content.split("\n").length;
 		const suffix = total > 8 ? `\n... (${total} lines total)` : "";
 		return `${filePath} (NEW FILE)\n${lines}${suffix}`;
 	}
 
-	// Existing file — show what's being replaced
-	const lines = content.split("\n").slice(0, 5).map((l) => `+ ${l}`).join("\n");
+	let old = "";
+	try { old = readFileSync(absPath, "utf8"); } catch { /* fall through to head-only */ }
+	if (!old) {
+		const lines = content.split("\n").slice(0, 5).map((l) => `+ ${l}`).join("\n");
+		const total = content.split("\n").length;
+		return `${filePath} (REWRITE, ${total} lines — old contents unreadable)\n${lines}`;
+	}
+	if (old === content) {
+		return `${filePath} (REWRITE, no textual change)`;
+	}
+	const diff = naiveLineDiff(old, content);
+	const changedLines = diff.filter((d) => d.tag !== " ").length;
 	const total = content.split("\n").length;
-	return `${filePath} (REWRITE, ${total} lines)\n${lines}`;
+	return `${filePath} (REWRITE, ${total} lines, ${changedLines} changed)\n${formatHunks(diff)}`;
 };
 
 export default function (pi: ExtensionAPI) {
@@ -311,7 +418,7 @@ export default function (pi: ExtensionAPI) {
 			// Build diff preview for edit/write.
 			let preview: string;
 			if (event.toolName === "edit") {
-				preview = buildEditPreview(input);
+				preview = buildEditPreview(input, ctx.cwd);
 			} else if (event.toolName === "write") {
 				preview = buildWritePreview(input, ctx.cwd);
 			} else {
