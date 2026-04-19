@@ -53,14 +53,32 @@ export default function (pi: ExtensionAPI) {
 		}
 	};
 
+	const refreshQueue = (ctx: ExtensionContext) => {
+		try {
+			ctx.ui.setStatus(
+				"92-queue",
+				ctx.hasPendingMessages() ? ctx.ui.theme.fg("warning", "queued") : undefined,
+			);
+		} catch { /* ignore */ }
+	};
+
 	pi.on("session_start", async (_event, ctx) => {
 		refreshFooter(ctx);
 		void refreshStatusline(ctx);
+		refreshQueue(ctx);
 	});
 
 	pi.on("turn_end", async (_event, ctx) => {
 		refreshFooter(ctx);
 		void refreshStatusline(ctx);
+		refreshQueue(ctx);
+	});
+
+	pi.on("turn_start", async (_event, ctx) => {
+		refreshQueue(ctx);
+	});
+	pi.on("message_end", async (_event, ctx) => {
+		refreshQueue(ctx);
 	});
 
 
