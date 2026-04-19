@@ -22,7 +22,13 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { minimatch } from "minimatch";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { isExtensionDisabled, loadLocalSettingsRoot, loadSettingsRoot } from "../lib/settings.js";
+import {
+	isExtensionDisabled,
+	loadLocalSettingsRoot,
+	loadProjectLocalSettingsRoot,
+	loadProjectSettingsRoot,
+	loadSettingsRoot,
+} from "../lib/settings.js";
 
 type Action = "allow" | "confirm" | "deny";
 
@@ -42,21 +48,58 @@ interface PermissionsConfig {
 
 const LOCAL_SETTINGS_PATH = join(homedir(), ".pi/agent/settings.local.json");
 
-const loadConfig = (): PermissionsConfig | null => {
-	const parsed = loadSettingsRoot();
-	const main = parsed?.["opus-pack"]?.["permissions"] ?? null;
-	// Merge in local overrides (allow-always rules persisted from prior prompts).
-	const localParsed = loadLocalSettingsRoot();
-	const localRules: Rule[] = Array.isArray(localParsed?.["opus-pack"]?.["permissions"]?.["rules"])
-		? localParsed["opus-pack"]["permissions"]["rules"]
-		: [];
-	if (!main) {
-		return localRules.length > 0
-			? { default: "confirm", rules: localRules, interactive: true }
-			: null;
+const extractRules = (root: any): Rule[] => {
+	const rules = root?.["opus-pack"]?.["permissions"]?.["rules"];
+	return Array.isArray(rules) ? rules : [];
+};
+
+const extractBase = (root: any): Partial<PermissionsConfig> | null => {
+	const block = root?.["opus-pack"]?.["permissions"];
+	if (!block || typeof block !== "object") return null;
+	const { rules: _drop, ...rest } = block;
+	return rest;
+};
+
+/**
+ * Load permissions config merged across four layers (higher = more specific,
+ * matched first):
+ *   1. <cwd>/.pi/settings.local.json — project-local user decisions
+ *   2. <cwd>/.pi/settings.json       — project-shared policy (committed)
+ *   3. ~/.pi/agent/settings.local.json — global local overrides
+ *   4. ~/.pi/agent/settings.json       — global baseline
+ *
+ * Defaults (default/smart/interactive) come from the most specific layer that
+ * provides them; rules are concatenated in the above order so specific matches
+ * win on first-match-wins.
+ */
+const loadConfig = (cwd: string): PermissionsConfig | null => {
+	const roots = [
+		loadProjectLocalSettingsRoot(cwd),
+		loadProjectSettingsRoot(cwd),
+		loadLocalSettingsRoot(),
+		loadSettingsRoot(),
+	];
+
+	const allRules: Rule[] = roots.flatMap(extractRules);
+	const bases = roots.map(extractBase);
+
+	// Pick the most specific base that actually defines a default; everything
+	// else falls back to sensible defaults so a .pi/settings.json with only
+	// `rules: [...]` still works.
+	let merged: Partial<PermissionsConfig> = {};
+	for (const b of bases) {
+		if (!b) continue;
+		merged = { ...b, ...merged }; // earlier (more specific) wins; fill missing keys
 	}
-	// Local rules evaluated FIRST (they were user's explicit persistent decisions).
-	return { ...main, rules: [...localRules, ...(main.rules ?? [])] };
+
+	if (allRules.length === 0 && !merged.default) return null;
+
+	return {
+		default: (merged.default as Action) ?? "confirm",
+		smart: merged.smart ?? false,
+		interactive: merged.interactive ?? true,
+		rules: allRules,
+	};
 };
 
 type PersistResult =
@@ -195,8 +238,8 @@ export default function (pi: ExtensionAPI) {
 		return sessionAllowed.some((rule) => matchRule(rule, toolName, input, cwd));
 	};
 
-	pi.on("session_start", async () => {
-		config = loadConfig();
+	pi.on("session_start", async (_event, ctx) => {
+		config = loadConfig(ctx.cwd);
 		readFiles.clear();
 		sessionAllowed.length = 0;
 	});

@@ -64,6 +64,19 @@ export function loadLocalSettingsRoot(): any {
 }
 
 /**
+ * Read `<cwd>/.pi/settings.json` (project-level config, lower precedence than
+ * project-local but higher than user-level). Mtime-cached via the same map.
+ */
+export function loadProjectSettingsRoot(cwd: string): any {
+	return loadRawFrom(join(cwd, ".pi", "settings.json"));
+}
+
+/** Project-local override: `<cwd>/.pi/settings.local.json`. Highest precedence. */
+export function loadProjectLocalSettingsRoot(cwd: string): any {
+	return loadRawFrom(join(cwd, ".pi", "settings.local.json"));
+}
+
+/**
  * Is the opus-pack extension with the given short name currently disabled?
  * Read from settings.local.json → opus-pack.extensions.disabled[].
  */
