@@ -8,8 +8,36 @@
  * lets you re-check at any moment; footer shows compact ext/skills/mcp.
  */
 
+import { exec } from "node:child_process";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { isExtensionDisabled } from "../lib/settings.js";
+import { isExtensionDisabled, loadOpusPackSection } from "../lib/settings.js";
+
+interface ShellStatusConfig {
+	command: string;
+	timeoutMs: number;
+}
+
+const DEFAULT_SHELL_STATUS: ShellStatusConfig = { command: "", timeoutMs: 500 };
+
+const runShellLine = (cfg: ShellStatusConfig, cwd: string): Promise<string> =>
+	new Promise((resolve) => {
+		if (!cfg.command.trim()) {
+			resolve("");
+			return;
+		}
+		exec(
+			cfg.command,
+			{ cwd, timeout: Math.max(50, cfg.timeoutMs), windowsHide: true, maxBuffer: 64 * 1024 },
+			(err, stdout) => {
+				if (err) {
+					resolve("");
+					return;
+				}
+				const firstLine = String(stdout).split("\n").find((l) => l.trim().length > 0) ?? "";
+				resolve(firstLine.trim().slice(0, 200));
+			},
+		);
+	});
 
 const renderFooter = (ext: number, skills: number, mcp: number) =>
 	`ext:${ext} skills:${skills} mcp:${mcp}`;
@@ -53,6 +81,16 @@ export default function (pi: ExtensionAPI) {
 		}
 	};
 
+	const refreshShellLine = async (ctx: ExtensionContext) => {
+		const cfg = loadOpusPackSection("statusLine", DEFAULT_SHELL_STATUS);
+		if (!cfg.command.trim()) {
+			ctx.ui.setStatus("85-shell", undefined);
+			return;
+		}
+		const out = await runShellLine(cfg, ctx.cwd);
+		ctx.ui.setStatus("85-shell", out || undefined);
+	};
+
 	const refreshQueue = (ctx: ExtensionContext) => {
 		try {
 			ctx.ui.setStatus(
@@ -65,12 +103,14 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_start", async (_event, ctx) => {
 		refreshFooter(ctx);
 		void refreshStatusline(ctx);
+		void refreshShellLine(ctx);
 		refreshQueue(ctx);
 	});
 
 	pi.on("turn_end", async (_event, ctx) => {
 		refreshFooter(ctx);
 		void refreshStatusline(ctx);
+		void refreshShellLine(ctx);
 		refreshQueue(ctx);
 	});
 
