@@ -123,6 +123,55 @@ const fmtUptime = (sec: number | null): string => {
 	return `${Math.floor(sec / 3600)}h${Math.floor((sec % 3600) / 60)}m`;
 };
 
+const MAX_WATCH_LINES = 50;
+const MAX_WATCH_BYTES = 8 * 1024;
+
+interface Watcher {
+	path: string;
+	offset: number;
+}
+
+const readNewBytes = (path: string, fromOffset: number): { text: string; newOffset: number; truncated: boolean } => {
+	let stats;
+	try { stats = statSync(path); } catch { return { text: "", newOffset: fromOffset, truncated: false }; }
+	const size = stats.size;
+	if (size < fromOffset) {
+		// File was truncated/rotated — restart from 0.
+		fromOffset = 0;
+	}
+	if (size === fromOffset) return { text: "", newOffset: size, truncated: false };
+	const bytesAvail = size - fromOffset;
+	const bytesToRead = Math.min(bytesAvail, MAX_WATCH_BYTES);
+	const buf = Buffer.alloc(bytesToRead);
+	const fd = openSync(path, "r");
+	try { readSync(fd, buf, 0, buf.length, fromOffset); } finally { closeSync(fd); }
+	return {
+		text: buf.toString("utf8"),
+		newOffset: fromOffset + bytesToRead,
+		truncated: bytesAvail > bytesToRead,
+	};
+};
+
+const formatWatchPush = (watchers: Watcher[]): { pushContent: string; watchersUpdated: Watcher[] } | null => {
+	const sections: string[] = [];
+	const updated: Watcher[] = [];
+	for (const w of watchers) {
+		const r = readNewBytes(w.path, w.offset);
+		updated.push({ path: w.path, offset: r.newOffset });
+		if (!r.text) continue;
+		const rawLines = r.text.split("\n").filter((l) => l.length > 0);
+		const shown = rawLines.slice(-MAX_WATCH_LINES);
+		const drop = rawLines.length - shown.length + (r.truncated ? 1 : 0);
+		const header = `── ${w.path} (+${shown.length}${drop > 0 ? `, ${drop} truncated` : ""}) ──`;
+		sections.push([header, ...shown].join("\n"));
+	}
+	if (sections.length === 0) return null;
+	return {
+		pushContent: ["[LOG WATCH] New output since last turn:", ...sections].join("\n\n"),
+		watchersUpdated: updated,
+	};
+};
+
 const tailFile = (path: string, lines: number, from: number | undefined): { text: string; offset: number; truncated: boolean } => {
 	const stats = statSync(path);
 	const size = stats.size;
@@ -150,14 +199,50 @@ const tailFile = (path: string, lines: number, from: number | undefined): { text
 
 export default function (pi: ExtensionAPI) {
 	if (isExtensionDisabled("log-tail")) return;
+
+	// path → current read offset. Model opts in via log_tail({watch: true}).
+	const watchers = new Map<string, Watcher>();
+
+	const refreshWatchStatus = (ctx: ExtensionContext) => {
+		if (watchers.size === 0) {
+			ctx.ui.setStatus("04-logwatch", undefined);
+		} else {
+			ctx.ui.setStatus("04-logwatch", ctx.ui.theme.fg("accent", `watch:${watchers.size}`));
+		}
+	};
+
 	// Status bar refresh on turn boundaries.
 	pi.on("turn_end", async (_event, ctx) => {
 		const entries = await scanBgEntries(pi);
 		updateStatus(ctx, entries);
+		refreshWatchStatus(ctx);
 	});
 	pi.on("session_start", async (_event, ctx) => {
 		const entries = await scanBgEntries(pi);
 		updateStatus(ctx, entries);
+		refreshWatchStatus(ctx);
+	});
+
+	// Inject accumulated log delta as hidden context-message before every turn.
+	// Using the extension-return pattern (see plan-mode) instead of
+	// sendUserMessage so we don't trigger a recursive turn from within the
+	// before_agent_start handler.
+	pi.on("before_agent_start", async () => {
+		if (watchers.size === 0) return;
+		const snapshot = [...watchers.values()];
+		const push = formatWatchPush(snapshot);
+		if (!push) return;
+		// Commit offsets so we don't re-send the same bytes next turn.
+		for (const w of push.watchersUpdated) {
+			if (watchers.has(w.path)) watchers.set(w.path, w);
+		}
+		return {
+			message: {
+				customType: "log-watch-push",
+				content: push.pushContent,
+				display: true,
+			},
+		};
 	});
 
 	pi.registerTool({
@@ -172,29 +257,40 @@ export default function (pi: ExtensionAPI) {
 			path: Type.String({ description: "Absolute path to the log file." }),
 			lines: Type.Optional(Type.Integer({ minimum: 1, maximum: 2000, description: "Number of trailing lines when `from` is omitted (default 50)." })),
 			from: Type.Optional(Type.Integer({ minimum: 0, description: "Byte offset to start reading from (for incremental reads)." })),
+			watch: Type.Optional(Type.Boolean({ description: "Subscribe: on every subsequent turn the extension pushes any new log bytes as a hidden context-message. Offset advances automatically. Pass `watch: false` to unsubscribe." })),
 		}),
-		async execute(_toolCallId, params, _signal, _onUpdate, ctx): Promise<AgentToolResult<{ offset: number; truncated: boolean }>> {
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx): Promise<AgentToolResult<{ offset: number; truncated: boolean; watching: boolean }>> {
 			if (!pathAllowed(params.path, ctx.cwd)) {
 				return {
 					content: [{ type: "text", text: `refused: ${params.path} is outside cwd and allowed log roots (${ALLOWED_ROOTS.join(", ")})` }],
 					isError: true,
-					details: { offset: 0, truncated: false },
+					details: { offset: 0, truncated: false, watching: watchers.has(params.path) },
 				};
 			}
 			if (!existsSync(params.path)) {
 				return {
 					content: [{ type: "text", text: `not found: ${params.path}` }],
 					isError: true,
-					details: { offset: 0, truncated: false },
+					details: { offset: 0, truncated: false, watching: false },
 				};
 			}
 			const lines = params.lines ?? 50;
 			const result = tailFile(params.path, lines, params.from);
-			const suffix = result.truncated ? `\n[truncated — next offset: ${result.offset}]` : `\n[offset: ${result.offset}]`;
+			if (params.watch === true) {
+				watchers.set(params.path, { path: params.path, offset: result.offset });
+				refreshWatchStatus(ctx);
+			} else if (params.watch === false) {
+				watchers.delete(params.path);
+				refreshWatchStatus(ctx);
+			}
+			const watchSuffix = watchers.has(params.path) ? ` [watching — pushes on each turn]` : "";
+			const suffix = result.truncated
+				? `\n[truncated — next offset: ${result.offset}]${watchSuffix}`
+				: `\n[offset: ${result.offset}]${watchSuffix}`;
 			return {
 				content: [{ type: "text", text: (result.text || "(empty)") + suffix }],
 				isError: false,
-				details: { offset: result.offset, truncated: result.truncated },
+				details: { offset: result.offset, truncated: result.truncated, watching: watchers.has(params.path) },
 			};
 		},
 	});
