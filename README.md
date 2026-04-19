@@ -1,6 +1,8 @@
 # opus-pack-pi
 
-Opinionated bundle для запуска Claude Opus 4.7 внутри [pi-coding-agent](https://github.com/badlogic/pi-mono). Берёт community-расширения через нативный `pi install` и добавляет четыре собственных extension'а для дыр, которые community не закрывает.
+Opinionated bundle расширений для [pi-coding-agent](https://github.com/badlogic/pi-mono), дополняющий его CC-паритетом (plan mode, todo, permissions, skills, CC-style hooks и т.д.). Название историческое — пакет начался как сборка под Claude Opus 4.7, но сейчас **провайдер-нейтрален**: работает с Anthropic / OpenAI / Ollama / любым другим провайдером, поддерживаемым pi. Модели subagent'ов и router'а конфигурятся через алиасы в `settings.json` (см. ниже).
+
+Берёт community-расширения через нативный `pi install` и добавляет собственные extension'ы для дыр, которые community не закрывает.
 
 ## Что внутри
 
@@ -43,14 +45,16 @@ Opinionated bundle для запуска Claude Opus 4.7 внутри [pi-coding
 
 ### Agent профили (`agents/`)
 
-- `explore.md` (Opus 4.7, read-only) — поиск паттернов, возвращает summary + указания на файлы.
-- `verify.md` (Sonnet 4.6, дешевле) — запуск тестов/lint/build, отчёт pass/fail.
-- `general-purpose.md` (Opus 4.7, full toolset, 20-turn cap) — задачи, не вписавшиеся в первые два.
+- `explore.md` (`alias:slow`, read-only) — поиск паттернов, возвращает summary + указания на файлы.
+- `verify.md` (`alias:fast`) — запуск тестов/lint/build, отчёт pass/fail.
+- `general-purpose.md` (`alias:slow`, full toolset, 20-turn cap) — задачи, не вписавшиеся в первые два.
+
+Алиасы `fast` / `balanced` / `slow` резолвятся через `opus-pack.subagent.modelAlias` в `settings.json` — подставь свой провайдер там один раз, профили трогать не надо. См. `extensions/subagent/README.md` для примера конфига.
 
 ### Community packages, которые ставит installer
 
 - `obra/superpowers` — 14 skills (systematic-debugging, brainstorming, writing-plans, TDD, code-review, git-worktrees, ...). Только `skills/` — CC-only `commands/`/`agents/`/`hooks/` отфильтрованы.
-- `rynfar/meridian` — proxy для Claude Max подписки (unlimited Opus).
+- `rynfar/meridian` — proxy для Claude Max подписки (Anthropic-only; опционально, не ставь если не Anthropic).
 - `viartemev/pi-rtk-rewrite` — авто-rtk rewrite на bash (60-90% token savings).
 - `nicobailon/pi-mcp-adapter` — MCP bridge (CC-формат, proxy-tool ~200 tokens, lazy lifecycle, idleTimeout).
 - `tmustier/pi-extensions` — `/usage` dashboard, `/readfiles` file browser, tab-status, ralph-wiggum (long tasks), agent-guidance (Claude/Codex/Gemini switching).

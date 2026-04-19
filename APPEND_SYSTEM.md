@@ -24,7 +24,7 @@
 - Не используй todo для trivial задач (одна правка, один файл).
 
 ### Long-running tasks
-- **One-shot (build/test/migration)** — `Agent(subagent_type: "verify", task: "run X, report pass/fail")`. Sonnet, возвращает структурированный результат.
+- **One-shot (build/test/migration)** — `Agent(subagent_type: "verify", task: "run X, report pass/fail")`. Использует `alias:fast` (см. `opus-pack.subagent.modelAlias`), возвращает структурированный результат.
 - **Watch / dev-server** — pi-native detach:
   ```
   cmd > /tmp/pi-bg-<slug>.log 2>&1 & echo $! > /tmp/pi-bg-<slug>.pid
@@ -51,7 +51,7 @@
 - При ручном `/model` switch router автоматически pause до конца сессии — чтоб не перебивать явный выбор.
 
 ### Conventions (CLAUDE.md / AGENTS.md)
-- `~/.claude/CLAUDE.md` — глобал. Project `./CLAUDE.md` / `./AGENTS.md` — локал, приоритетнее глобала.
+- Глобал: `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, `~/.gemini/AGENTS.md`. Project `./CLAUDE.md` / `./AGENTS.md` — локал, приоритетнее глобала.
 - Upward walk от cwd до HOME — все найденные файлы мерджатся (ближайшие к cwd = последние = highest priority).
 - `/claude-md` — проверить что подхватилось.
 - Cap `maxTotalChars` в settings (default 20000) — чтоб не раздуть system prompt.

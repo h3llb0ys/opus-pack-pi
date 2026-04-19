@@ -187,7 +187,11 @@ const PATH_DENY: { matcher: (abs: string) => boolean; reason: string }[] = [
 	{ matcher: (p) => /(^|\/)credentials(\.|$)/i.test(p), reason: "credentials files protected" },
 	{ matcher: (p) => /\.pem$/i.test(p), reason: "*.pem files protected" },
 	{ matcher: (p) => p.includes(`${HOME}/.ssh/`), reason: "~/.ssh protected" },
-	{ matcher: (p) => p.startsWith(`${HOME}/.claude/`) || p === `${HOME}/.claude`, reason: "~/.claude protected (Opus Pack policy)" },
+	{ matcher: (p) => p.startsWith(`${HOME}/.claude/`) || p === `${HOME}/.claude`, reason: "~/.claude protected (CLI agent config)" },
+	{ matcher: (p) => p.startsWith(`${HOME}/.codex/`) || p === `${HOME}/.codex`, reason: "~/.codex protected (CLI agent config)" },
+	{ matcher: (p) => p.startsWith(`${HOME}/.gemini/`) || p === `${HOME}/.gemini`, reason: "~/.gemini protected (CLI agent config)" },
+	{ matcher: (p) => p.startsWith(`${HOME}/.openai/`) || p === `${HOME}/.openai`, reason: "~/.openai protected (credentials)" },
+	{ matcher: (p) => p.startsWith(`${HOME}/.anthropic/`) || p === `${HOME}/.anthropic`, reason: "~/.anthropic protected (credentials)" },
 	{ matcher: (p) => p === `${HOME}/.pi/agent/SYSTEM.md`, reason: "~/.pi/agent/SYSTEM.md protected (would clobber pi base prompt)" },
 ];
 

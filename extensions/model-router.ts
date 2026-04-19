@@ -264,7 +264,23 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	const parseRetryAfter = (headers: Record<string, string>, fallbackSeconds: number): number => {
-		const raw = headers["retry-after"] ?? headers["Retry-After"] ?? headers["x-ratelimit-reset"] ?? "";
+		// Lower-case headers; Node usually does this already but some providers
+		// emit mixed case.
+		const h: Record<string, string> = {};
+		for (const [k, v] of Object.entries(headers)) h[k.toLowerCase()] = v;
+
+		// Milliseconds-accurate wins first (OpenAI sends these).
+		const msRaw = h["retry-after-ms"] ?? h["x-ratelimit-reset-requests-ms"] ?? h["x-ratelimit-reset-tokens-ms"] ?? "";
+		if (msRaw) {
+			const asNumber = Number.parseFloat(msRaw);
+			if (Number.isFinite(asNumber) && asNumber > 0) return Math.min(asNumber, 300_000); // cap at 5 min
+		}
+
+		const raw = h["retry-after"]
+			?? h["x-ratelimit-reset"]
+			?? h["x-ratelimit-reset-requests"]
+			?? h["x-ratelimit-reset-tokens"]
+			?? "";
 		if (!raw) return fallbackSeconds * 1000;
 		const asNumber = Number.parseFloat(raw);
 		if (Number.isFinite(asNumber) && asNumber > 0) return Math.min(asNumber, 300) * 1000; // cap at 5 min

@@ -56,7 +56,7 @@ export default function (pi: ExtensionAPI) {
 			const skills = cmds.filter((c) => c.source === "skill").length;
 			const tools = pi.getAllTools();
 			const mcp = tools.filter((t) => /^mcp(_|$)/i.test(t.name)).length;
-			ctx.ui.setStatus("90-opus", renderFooter(ext, skills, mcp));
+			ctx.ui.setStatus("90-pack", renderFooter(ext, skills, mcp));
 		} catch {
 			// pi internals may not be ready; ignore.
 		}

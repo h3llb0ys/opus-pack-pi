@@ -31,8 +31,11 @@ const formatTokens = (n: number): string => {
 	return `${(n / 1_000_000).toFixed(1)}M`;
 };
 
-const formatCost = (n: number): string => {
-	if (n === 0) return "$0";
+const formatCost = (n: number, tokens: number = 0): string => {
+	// Providers without a pricing table in pi-ai (Ollama, local LLMs, some
+	// OpenAI proxies) return cost=0 even though tokens flowed. Distinguish
+	// "actually $0" from "unknown pricing" by checking the token count.
+	if (n === 0) return tokens > 0 ? "—" : "$0";
 	if (n < 0.01) return `$${n.toFixed(4)}`;
 	return `$${n.toFixed(2)}`;
 };
@@ -153,7 +156,7 @@ export default function (pi: ExtensionAPI) {
 				lines.push(`  Cache: ${formatTokens(currentUsage.cacheRead)} read / ${formatTokens(currentUsage.cacheWrite)} write`);
 			}
 			lines.push(`  Total tokens: ${formatTokens(currentUsage.totalTokens)}`);
-			lines.push(`  Cost: ${formatCost(currentUsage.cost)}`);
+			lines.push(`  Cost: ${formatCost(currentUsage.cost, currentUsage.totalTokens)}`);
 
 			// Today's total (including current session)
 			const todayData = byDay.get(today);
@@ -162,7 +165,7 @@ export default function (pi: ExtensionAPI) {
 				lines.push(`Today (${today}):`);
 				lines.push(`  Sessions: ${todayData.sessions}  Turns: ~${todayData.turns ?? "n/a"}`);
 				lines.push(`  Total tokens: ${formatTokens(todayData.totalTokens)}`);
-				lines.push(`  Cost: ${formatCost(todayData.cost)}`);
+				lines.push(`  Cost: ${formatCost(todayData.cost, todayData.totalTokens)}`);
 				if (todayData.cacheRead > 0) {
 					const cacheRate = todayData.totalTokens > 0
 						? ((todayData.cacheRead / todayData.totalTokens) * 100).toFixed(0)
@@ -181,7 +184,7 @@ export default function (pi: ExtensionAPI) {
 				for (const day of days) {
 					const d = byDay.get(day)!;
 					lines.push(
-						`  ${day}  ${String(d.sessions).padStart(8)}  ${formatTokens(d.totalTokens).padStart(10)}  ${formatCost(d.cost).padStart(6)}`,
+						`  ${day}  ${String(d.sessions).padStart(8)}  ${formatTokens(d.totalTokens).padStart(10)}  ${formatCost(d.cost, d.totalTokens).padStart(6)}`,
 					);
 				}
 			}

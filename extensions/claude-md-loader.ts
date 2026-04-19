@@ -57,10 +57,20 @@ const readCached = (path: string): string | null => {
 
 const findGlobalFiles = (): string[] => {
 	const found: string[] = [];
-	const global = join(homedir(), ".claude", "CLAUDE.md");
-	if (existsSync(global)) found.push(global);
-	const xdg = join(process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "AGENTS.md");
-	if (existsSync(xdg)) found.push(xdg);
+	const home = homedir();
+	// CC-style + OpenAI Codex / Gemini CLI / pi — each vendor keeps its own
+	// conventions file under ~/.<tool>/. We merge all so provider swaps don't
+	// lose the guidance.
+	const candidates = [
+		join(home, ".claude", "CLAUDE.md"),
+		join(home, ".codex", "AGENTS.md"),
+		join(home, ".gemini", "AGENTS.md"),
+		join(home, ".pi", "AGENTS.md"),
+		join(process.env.XDG_CONFIG_HOME ?? join(home, ".config"), "AGENTS.md"),
+	];
+	for (const p of candidates) {
+		if (existsSync(p)) found.push(p);
+	}
 	return found;
 };
 
