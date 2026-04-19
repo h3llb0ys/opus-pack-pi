@@ -1,8 +1,8 @@
 {
-  "_comment": "Эталон. install.sh мерджит ТОЛЬКО hooks, opus-pack, packages — не перезаписывает чужие ключи. Конфиг MCP-серверов — в mcp.json.example (читается pi-mcp-adapter).",
+  "_comment": "Reference. install.sh merges ONLY hooks, opus-pack, packages — never overwrites unrelated keys. MCP servers live in mcp.json.example (read by pi-mcp-adapter).",
 
   "hooks": {
-    "_comment": "Формат 1:1 с Claude Code. Hook-bridge.ts читает этот блок. Можно копипастить из ~/.claude/settings.json.",
+    "_comment": "1:1 Claude Code format. hook-bridge.ts reads this block. You can copy entries from ~/.claude/settings.json.",
     "PreToolUse": [],
     "PostToolUse": [],
     "SessionStart": [],
@@ -10,7 +10,7 @@
   },
 
   "opus-pack": {
-    "_comment": "Флаги opus-pack-pi extensions.",
+    "_comment": "opus-pack-pi extension flags.",
     "iterationGuard": {
       "_comment": "Cap on agent turns per run. /continue extends by extendBy.",
       "defaultCap": 40,
@@ -121,7 +121,7 @@
   "packages": [
     {
       "source": "git:github.com/obra/superpowers",
-      "_comment": "Только skills/. Отбрасываем CC-only commands/agents/hooks (формат не совместим с pi).",
+      "_comment": "Only skills/ is loaded. CC-only commands/agents/hooks are dropped (format incompatible with pi).",
       "skills": ["skills/*/SKILL.md"],
       "extensions": [],
       "prompts": []

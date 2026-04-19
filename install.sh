@@ -2,12 +2,12 @@
 #
 # opus-pack-pi installer (idempotent)
 #
-# - Доустанавливает недостающие community-пакеты через `pi install`
-# - Регистрирует локальный путь репо в pi (если ещё не зарегистрирован)
-# - Безопасно мерджит settings.json через jq (не перезаписывает чужие ключи)
-# - Append APPEND_SYSTEM.md в ~/.pi/agent/APPEND_SYSTEM.md (с маркерами для clean uninstall)
+# - Installs any missing community packages via `pi install`
+# - Registers the local repo path with pi (if not already registered)
+# - Deep-merges settings.json through jq (preserves unrelated keys)
+# - Appends APPEND_SYSTEM.md to ~/.pi/agent/APPEND_SYSTEM.md (with markers for clean uninstall)
 #
-# Запускать многократно безопасно — печатает [skip] для уже сделанного.
+# Safe to re-run — prints [skip] for anything already in place.
 
 set -euo pipefail
 
@@ -24,8 +24,8 @@ warn() { printf "%s[warn]%s %s\n" "$c_warn" "$c_off" "$1"; }
 fail() { printf "%s[error]%s %s\n" "$c_err" "$c_off" "$1" >&2; exit 1; }
 
 # 1. Sanity checks
-command -v pi >/dev/null || fail "pi не установлен. См. https://pi.dev"
-command -v jq >/dev/null || fail "jq нужен для безопасного merge settings.json. brew install jq / apt install jq"
+command -v pi >/dev/null || fail "pi is not installed. See https://pi.dev"
+command -v jq >/dev/null || fail "jq is required for safe settings.json merging. brew install jq / apt install jq"
 mkdir -p "$PI_DIR"
 
 # 2. settings.json bootstrap
@@ -43,8 +43,8 @@ PACKAGES=(
 	"git:github.com/viartemev/pi-working-message"
 )
 
-# Anthropic-only: proxy for Claude Max subscription. Skipped unless explicitly requested
-# or already installed. Pass ANTHROPIC=1 to install.
+# Anthropic-only: Claude Max subscription proxy. Skipped unless explicitly requested
+# or already installed. Set ANTHROPIC=1 to install.
 ANTHROPIC_PKGS=(
 	"git:github.com/rynfar/meridian"
 )
@@ -56,7 +56,7 @@ for pkg in "${PACKAGES[@]}"; do
 		log skip "$pkg"
 	else
 		log install "$pkg"
-		pi install "$pkg" || warn "не удалось установить $pkg (продолжаем)"
+		pi install "$pkg" || warn "failed to install $pkg (continuing)"
 	fi
 done
 
@@ -68,20 +68,20 @@ if [ "${ANTHROPIC:-0}" = "1" ]; then
 			log skip "$pkg"
 		else
 			log install "$pkg"
-			pi install "$pkg" || warn "не удалось установить $pkg (продолжаем)"
+			pi install "$pkg" || warn "failed to install $pkg (continuing)"
 		fi
 	done
 fi
 
 # 4. Local opus-pack-pi
 if grep -qF "$REPO_DIR" <<< "$INSTALLED"; then
-	log skip "$REPO_DIR (local, уже зарегистрирован)"
+	log skip "$REPO_DIR (local, already registered)"
 else
 	log install "$REPO_DIR (local)"
-	pi install "$REPO_DIR" || fail "не удалось зарегистрировать локальный путь $REPO_DIR"
+	pi install "$REPO_DIR" || fail "failed to register local repo path $REPO_DIR"
 fi
 
-# 5. Merge settings.json (без mcpServers — он живёт в mcp.json)
+# 5. Merge settings.json (mcpServers lives in mcp.json)
 if [ -f "$REPO_DIR/settings.json.example" ]; then
 	TMP="$(mktemp)"
 	# Drop keys whose name starts with "_" (recursively) so the example's
@@ -113,12 +113,12 @@ if [ -f "$REPO_DIR/settings.json.example" ]; then
 			    | map(select(. as $p | $bp | map(.source? // (if type=="string" then . else "" end)) | index($p.source? // ($p|tostring)) | not))
 		      )) }
 	' "$SETTINGS" > "$TMP" && mv "$TMP" "$SETTINGS"
-	ok "settings.json смержен"
+	ok "settings.json merged"
 else
-	warn "settings.json.example не найден, пропускаю merge"
+	warn "settings.json.example not found, skipping merge"
 fi
 
-# 5b. Merge mcp.json (для pi-mcp-adapter — отдельный файл)
+# 5b. Merge mcp.json (read by pi-mcp-adapter — separate file)
 if [ -f "$REPO_DIR/mcp.json.example" ]; then
 	[ -f "$MCP_JSON" ] || echo '{}' > "$MCP_JSON"
 	TMP="$(mktemp)"
@@ -131,16 +131,16 @@ if [ -f "$REPO_DIR/mcp.json.example" ]; then
 		  + { mcpServers: ($bs   + (($patch[0].mcpServers // {}) | with_entries(select(.key != "_comment"))
 		                                                         | map_values(with_entries(select(.key != "_comment"))))) }
 	' "$MCP_JSON" > "$TMP" && mv "$TMP" "$MCP_JSON"
-	ok "mcp.json смержен (для pi-mcp-adapter): $MCP_JSON"
+	ok "mcp.json merged (for pi-mcp-adapter): $MCP_JSON"
 fi
 
 # 6. APPEND_SYSTEM.md
 if [ -f "$APPEND_SYS" ] && grep -qF "Opus Pack rules START" "$APPEND_SYS"; then
-	log skip "$APPEND_SYS уже содержит Opus Pack rules"
+	log skip "$APPEND_SYS already contains Opus Pack rules"
 else
 	[ -f "$APPEND_SYS" ] && printf "\n" >> "$APPEND_SYS"
 	cat "$REPO_DIR/APPEND_SYSTEM.md" >> "$APPEND_SYS"
-	ok "$APPEND_SYS дописан"
+	ok "$APPEND_SYS updated"
 fi
 
 # 7. Runtime dependencies for extensions
@@ -150,10 +150,10 @@ if [ ! -d "$REPO_DIR/node_modules/minimatch" ]; then
 fi
 
 # 8. Final report
-printf "\n═══ Opus Pack установлен ═══\n"
+printf "\n═══ Opus Pack installed ═══\n"
 echo "Repo:      $REPO_DIR"
 echo "Settings:  $SETTINGS"
 echo "MCP:       $MCP_JSON"
 echo "Append:    $APPEND_SYS"
 echo
-echo "Запусти 'pi' и /status — увидишь сводку. Footer: ext:N skills:M mcp:K"
+echo "Run 'pi' and /status to see the summary. Footer: ext:N skills:M mcp:K"

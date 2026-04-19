@@ -1,5 +1,5 @@
 {
-  "_comment": "pi-mcp-adapter читает этот файл по пути ~/.pi/agent/mcp.json. install.sh мерджит ТОЛЬКО ключи settings и mcpServers — пользовательские сервера сохраняются. Пакет opus-pack-pi по умолчанию MCP-серверы не регистрирует; добавляй свои в mcpServers ниже.",
+  "_comment": "pi-mcp-adapter reads this file from ~/.pi/agent/mcp.json. install.sh merges ONLY the settings and mcpServers keys — user-added servers are preserved. opus-pack-pi registers no MCP servers by default; add your own under mcpServers below.",
 
   "settings": {
     "toolPrefix": "server",

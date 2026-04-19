@@ -154,7 +154,7 @@ export default function (pi: ExtensionAPI) {
 			pi.sendMessage(
 				{
 					customType: "todo-nag",
-					content: "⚠️ Ты начал менять код без плана. Вызови `todo add` по шагам, потом `todo start` → работай → `todo done`.",
+					content: "⚠️ You started modifying code without a plan. Call `todo add` for each step, then `todo start` → work → `todo done`.",
 					display: true,
 				},
 				{ deliverAs: "steer" },
@@ -172,7 +172,7 @@ export default function (pi: ExtensionAPI) {
 				pi.sendMessage(
 					{
 						customType: "todo-nag",
-						content: "⚠️ Ты пишешь код, но ни одна задача не in_progress. Вызови `todo start <id>` на текущий шаг.",
+						content: "⚠️ You are writing code but no task is in_progress. Call `todo start <id>` on the current step.",
 						display: true,
 					},
 					{ deliverAs: "steer" },

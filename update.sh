@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# Update opus-pack-pi и все community-пакеты, ре-merge settings.
+# Update opus-pack-pi plus community packages, re-merge settings.
 
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-echo "[1/3] pi update (non-pinned пакеты)"
+echo "[1/3] pi update (non-pinned packages)"
 pi update || echo "  (some packages skipped)"
 
-echo "[2/3] git pull в $REPO_DIR"
+echo "[2/3] git pull in $REPO_DIR"
 cd "$REPO_DIR"
 if [ -d .git ] && git remote get-url origin >/dev/null 2>&1; then
-	git pull --ff-only || echo "  (не удалось fast-forward — есть локальные коммиты или конфликт)"
+	git pull --ff-only || echo "  (fast-forward failed — local commits or conflict)"
 else
-	echo "  (не git-репо или без remote, пропускаю)"
+	echo "  (not a git repo or no remote, skipping)"
 fi
 
 echo "[3/3] re-merge settings.json"
