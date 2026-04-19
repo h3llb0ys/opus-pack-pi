@@ -66,15 +66,32 @@ fi
 # 5. Merge settings.json (без mcpServers — он живёт в mcp.json)
 if [ -f "$REPO_DIR/settings.json.example" ]; then
 	TMP="$(mktemp)"
+	# Drop keys whose name starts with "_" (recursively) so the example's
+	# inline comment / placeholder blocks don't end up in the live config.
+	# opus-pack deep-merges via jq `*` so user customisations survive
+	# re-install (earlier versions did a shallow overwrite which wiped e.g.
+	# user-added permissions rules or subagent.modelAlias).
 	jq --slurpfile patch "$REPO_DIR/settings.json.example" '
+		def drop_underscores:
+			if type == "object" then
+				with_entries(select(.key | startswith("_") | not))
+				| map_values(drop_underscores)
+			elif type == "array" then
+				map(drop_underscores)
+			else .
+			end;
 		. as $base
 		| (.hooks      // {}) as $bh
+		| (."opus-pack" // {}) as $bop
 		| (.packages   // []) as $bp
+		| ($patch[0].hooks      // {} | drop_underscores) as $ph
+		| ($patch[0]."opus-pack" // {} | drop_underscores) as $pop
+		| ($patch[0].packages   // [] | drop_underscores) as $pp
 		| $base
-		  + { hooks:      ($bh + (($patch[0].hooks      // {}) | with_entries(select(.key != "_comment")))) }
-		  + { "opus-pack": (($patch[0]."opus-pack" // {}) | with_entries(select(.key != "_comment"))) }
-		  + { packages:   ($bp + (
-			    ($patch[0].packages // [])
+		  + { hooks: ($bh + $ph) }
+		  + { "opus-pack": ($pop * $bop) }
+		  + { packages: ($bp + (
+			    $pp
 			    | map(select(. as $p | $bp | map(.source? // (if type=="string" then . else "" end)) | index($p.source? // ($p|tostring)) | not))
 		      )) }
 	' "$SETTINGS" > "$TMP" && mv "$TMP" "$SETTINGS"
