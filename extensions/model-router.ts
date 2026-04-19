@@ -5,7 +5,7 @@
  * user-defined rules → a level is chosen → pi.setModel + pi.setThinkingLevel
  * are called for the upcoming turn. Provider-agnostic: the user supplies
  * the provider + model id explicitly in settings.json, so Ollama / OpenAI /
- * custom proxies work the same as Anthropic.
+ * custom proxies work the same as Anthropic / OpenAI / any other provider.
  *
  * Slash commands: /router <level|on|off|status>.
  * Status slot 06-router shows the current decision persistently.
@@ -97,7 +97,11 @@ const loadConfig = (): RouterConfig => loadOpusPackSection("modelRouter", DEFAUL
 const shortModelName = (m: { id?: string; name?: string } | undefined): string => {
 	if (!m) return "?";
 	const id = m.id ?? m.name ?? "?";
-	const stripped = id.replace(/^claude-/, "");
+	// Drop common provider prefixes so the status bar shows "sonnet-4-6" rather
+	// than "claude-sonnet-4-6" and "gpt-5.3" rather than "openai/gpt-5.3".
+	const stripped = id
+		.replace(/^(claude|openai|anthropic|gemini|google|ollama)[-/:]/i, "")
+		.replace(/^[^/]+\/([^/]+)$/, "$1");
 	const parts = stripped.split(/[-\/]/);
 	return parts.slice(0, 2).join("-");
 };

@@ -28,22 +28,46 @@
       ]
     },
     "modelRouter": {
-      "_comment": "Auto-switch model and thinking level per prompt. Provider-agnostic (Anthropic/Ollama/OpenAI/custom).",
+      "_comment": "Auto-switch model and thinking level per prompt. Provider-agnostic — fill `levels` with your provider+model ids. Disabled by default.",
       "enabled": false,
       "default": "medium",
       "autoBumpAfterTurns": 0,
-      "levels": {
+      "_levels_example_anthropic": {
         "trivial": { "provider": "anthropic", "model": "claude-haiku-4-5",  "thinking": "minimal" },
         "medium":  { "provider": "anthropic", "model": "claude-sonnet-4-6", "thinking": "medium"  },
         "high":    { "provider": "anthropic", "model": "claude-opus-4-7",   "thinking": "high"    },
         "xhigh":   { "provider": "anthropic", "model": "claude-opus-4-7",   "thinking": "xhigh"   }
       },
+      "_levels_example_openai": {
+        "trivial": { "provider": "openai", "model": "gpt-5.3-mini", "thinking": "minimal" },
+        "medium":  { "provider": "openai", "model": "gpt-5.3",      "thinking": "medium"  },
+        "high":    { "provider": "openai", "model": "gpt-5.3",      "thinking": "high"    },
+        "xhigh":   { "provider": "openai", "model": "gpt-5.3",      "thinking": "xhigh"   }
+      },
+      "_levels_example_ollama": {
+        "trivial": { "provider": "ollama", "model": "qwen3-8b-instruct",     "thinking": "off" },
+        "medium":  { "provider": "ollama", "model": "qwen3-30b-instruct",    "thinking": "off" },
+        "high":    { "provider": "ollama", "model": "llama3.1-70b-instruct", "thinking": "off" },
+        "xhigh":   { "provider": "ollama", "model": "llama3.1-70b-instruct", "thinking": "off" }
+      },
+      "levels": {},
       "rules": [
         { "match": "\\b(typo|rename|formatting)\\b",                     "level": "trivial" },
-        { "match": "\\b(refactor|architecture|design|migration)\\b",      "level": "high"    },
-        { "match": "\\b(debug|investigate|root.?cause|flaky)\\b",         "level": "xhigh"   },
+        { "match": "\\b(refactor|architecture|design|migration)\\b",     "level": "high"    },
+        { "match": "\\b(debug|investigate|root.?cause|flaky)\\b",        "level": "xhigh"   },
         { "minChars": 2000,                                              "level": "high"    }
       ]
+    },
+    "subagent": {
+      "_comment": "Subagent profiles use `model: alias:<name>` to stay provider-neutral. Pick the mapping that matches your provider. If a name is missing or left empty, the subagent inherits the parent pi session's default model.",
+      "modelAlias": {
+        "fast":     "",
+        "balanced": "",
+        "slow":     ""
+      },
+      "_modelAlias_example_anthropic": { "fast": "claude-haiku-4-5", "balanced": "claude-sonnet-4-6", "slow": "claude-opus-4-7" },
+      "_modelAlias_example_openai":    { "fast": "gpt-5.3-mini",     "balanced": "gpt-5.3",           "slow": "gpt-5.3" },
+      "_modelAlias_example_ollama":    { "fast": "qwen3-8b-instruct","balanced": "qwen3-30b-instruct","slow": "llama3.1-70b-instruct" }
     },
     "bashProgress": {
       "_comment": "Live widget for long bash commands.",
@@ -52,7 +76,7 @@
       "tailLines": 5
     },
     "claudeMdLoader": {
-      "_comment": "Auto-load CLAUDE.md / AGENTS.md from ~/.claude and cwd walk.",
+      "_comment": "Auto-load CLAUDE.md / AGENTS.md from ~/.{claude,codex,gemini,pi} + cwd upward walk.",
       "enabled": true,
       "includeGlobal": true,
       "includeWalk": true,
