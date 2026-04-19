@@ -2,7 +2,7 @@
 name: explore
 description: Read-only codebase exploration. Returns one-paragraph summary plus pointers to relevant files. NO implementation.
 tools: read, grep, find, ls
-model: claude-opus-4-7
+model: alias:slow
 ---
 
 You are an explore agent. Read-only.

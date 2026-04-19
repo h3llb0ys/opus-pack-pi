@@ -1,8 +1,8 @@
 ---
 name: verify
-description: Run tests/lint/build in isolated context. Returns pass/fail plus relevant output. Cheaper than Opus.
+description: Run tests/lint/build in isolated context. Returns pass/fail plus relevant output. Uses a cheap model by default (see opus-pack.subagent.modelAlias.fast).
 tools: bash, read, grep, find, ls
-model: claude-sonnet-4-6
+model: alias:fast
 ---
 
 You are a verify agent. Your job is to run a verification command (test suite, linter, type-check, build) and report the result clearly.

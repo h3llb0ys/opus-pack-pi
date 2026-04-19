@@ -23,6 +23,38 @@ import { type ExtensionAPI, getMarkdownTheme, withFileMutationQueue } from "@mar
 import { Container, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.js";
+import { loadOpusPackSection } from "../../lib/settings.js";
+
+interface SubagentSettings {
+	modelAlias: Record<string, string>;
+}
+
+const DEFAULT_SUBAGENT_SETTINGS: SubagentSettings = { modelAlias: {} };
+
+/**
+ * Resolve an agent's `model` field into a concrete model id.
+ *
+ * - Empty/undefined → undefined (subprocess inherits user's default model).
+ * - Starts with `alias:<name>` → look up `opus-pack.subagent.modelAlias[<name>]`
+ *   from settings. If alias missing, return undefined (fall through to default).
+ * - Otherwise treated as literal model id.
+ *
+ * This keeps agent profiles provider-neutral: a profile can say
+ * `model: alias:fast` and the end user decides what "fast" means for their
+ * provider in settings.json.
+ */
+const resolveAgentModel = (raw: string | undefined): string | undefined => {
+	const trimmed = (raw ?? "").trim();
+	if (!trimmed) return undefined;
+	if (trimmed.startsWith("alias:")) {
+		const aliasName = trimmed.slice("alias:".length).trim();
+		if (!aliasName) return undefined;
+		const cfg = loadOpusPackSection("subagent", DEFAULT_SUBAGENT_SETTINGS);
+		const resolved = cfg.modelAlias?.[aliasName];
+		return typeof resolved === "string" && resolved.trim() ? resolved.trim() : undefined;
+	}
+	return trimmed;
+};
 
 const MAX_PARALLEL_TASKS = 8;
 const MAX_CONCURRENCY = 4;
@@ -388,7 +420,8 @@ async function runSingleAgent(
 	}
 
 	const args: string[] = ["--mode", "json", "-p", "--no-session"];
-	if (agent.model) args.push("--model", agent.model);
+	const resolvedModel = resolveAgentModel(agent.model);
+	if (resolvedModel) args.push("--model", resolvedModel);
 	if (agent.tools && agent.tools.length > 0) args.push("--tools", agent.tools.join(","));
 
 	let tmpPromptDir: string | null = null;

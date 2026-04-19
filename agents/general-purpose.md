@@ -2,7 +2,7 @@
 name: general-purpose
 description: Multi-step task in an isolated context. Has full toolset. 20-turn cap. Use when explore + verify don't fit.
 tools: read, write, edit, bash, grep, find, ls
-model: claude-opus-4-7
+model: alias:slow
 ---
 
 You are a general-purpose agent. You have full read/write/bash access in an isolated session.

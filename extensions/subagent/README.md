@@ -129,11 +129,35 @@ Agents are markdown files with YAML frontmatter:
 name: my-agent
 description: What this agent does
 tools: read, grep, find, ls
-model: claude-haiku-4-5
+# model is optional. Options:
+#   model: <provider-model-id>          e.g. claude-sonnet-4-6, gpt-5.3, qwen3-30b
+#   model: alias:<name>                 resolves via opus-pack.subagent.modelAlias[<name>] in settings.json
+#   (omitted)                           subagent inherits the parent pi session's default model
+model: alias:fast
 ---
 
 System prompt for the agent goes here.
 ```
+
+### Model aliases
+
+To keep agent profiles provider-neutral, set aliases once in `settings.json`:
+
+```json
+{
+  "opus-pack": {
+    "subagent": {
+      "modelAlias": {
+        "fast":     "claude-haiku-4-5",
+        "balanced": "claude-sonnet-4-6",
+        "slow":     "claude-opus-4-7"
+      }
+    }
+  }
+}
+```
+
+OpenAI/Ollama/locals — подставь соответствующие id (`gpt-5.3`, `qwen3-30b-instruct`, `ollama/llama3.1:70b`, …). Профили агентов в пакете используют `alias:fast` / `alias:balanced` / `alias:slow`, так что смена провайдера — одна правка settings, а не всех frontmatter'ов.
 
 **Locations:**
 - `~/.pi/agent/agents/*.md` - User-level (always loaded)
@@ -143,12 +167,12 @@ Project agents override user agents with the same name when `agentScope: "both"`
 
 ## Sample Agents
 
-| Agent | Purpose | Model | Tools |
-|-------|---------|-------|-------|
-| `scout` | Fast codebase recon | Haiku | read, grep, find, ls, bash |
-| `planner` | Implementation plans | Sonnet | read, grep, find, ls |
-| `reviewer` | Code review | Sonnet | read, grep, find, ls, bash |
-| `worker` | General-purpose | Sonnet | (all default) |
+| Agent | Purpose | Model alias | Tools |
+|-------|---------|-------------|-------|
+| `scout` | Fast codebase recon | `alias:fast` | read, grep, find, ls, bash |
+| `planner` | Implementation plans | `alias:balanced` | read, grep, find, ls |
+| `reviewer` | Code review | `alias:balanced` | read, grep, find, ls, bash |
+| `worker` | General-purpose | `alias:balanced` | (all default) |
 
 ## Workflow Prompts
 
