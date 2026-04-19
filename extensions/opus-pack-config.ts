@@ -66,6 +66,7 @@ const OPUS_EXTENSIONS: ExtensionEntry[] = [
 	{ name: "smart-compact", category: "integrations", description: "Merge compact-hints.md into /compact focus" },
 	{ name: "log-tail", category: "integrations", description: "log_tail/log_kill/log_ps + /bg picker" },
 	{ name: "edit-log", category: "integrations", description: "/edit-log — on-demand list of files edited this session" },
+	{ name: "file-commands", category: "integrations", description: "Load slash commands from ~/.{pi,claude}/commands + <cwd>/.{pi,claude}/commands (*.md+frontmatter)" },
 
 	// dev (git helpers)
 	{ name: "auto-commit-on-exit", category: "dev", description: "Snapshot commit on pi exit" },
