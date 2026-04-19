@@ -13,7 +13,7 @@ Opinionated bundle расширений для [pi-coding-agent](https://github.
 | `plan-mode.ts` | `/plan` + `Ctrl+Alt+P` — read-only exploration, numbered plan. LLM вызывает `exit_plan_mode(plan)` → confirm-dialog → execute с `[DONE:N]` tracking. Флаг `--plan`. |
 | `permissions.ts` | Granular allow/confirm/deny per tool + path/pattern. Config в `opus-pack.permissions`. Усиливает safe-deny. |
 | `todo.ts` | `todo` tool (add/start/done/clear) + `/todo` command — task list с `in_progress` состоянием и single-active invariant (как CC TodoWrite). Widget + status bar. |
-| `log-tail.ts` | `log_tail` / `log_kill` / `log_ps` tools + `/bg` — pi-native long-running tasks. Opus detach'ит bash в `/tmp/pi-bg-<slug>.{log,pid}`, extension читает/убивает. Status bar: `bg:N`. |
+| `log-tail.ts` | `log_tail` / `log_kill` / `log_ps` tools + `/bg` — pi-native long-running tasks. Модель detach'ит bash в `/tmp/pi-bg-<slug>.{log,pid}`, extension читает/убивает. Status bar: `bg:N`. Watch-mode пушит новые строки на каждый turn. |
 | `diff.ts` | `/diff` — обзор изменений агента: `git diff HEAD --stat` + интерактивный пикер файла с полным diff. |
 | `rewind.ts` | `/rewind` — undo/rollback: discard changes, undo last commit, reset к произвольному коммиту или stash. |
 | `cost.ts` | `/cost` — дашборд token usage: текущая сессия, за сегодня, за 7 дней с breakdown по дням. |

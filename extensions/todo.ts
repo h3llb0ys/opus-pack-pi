@@ -7,8 +7,8 @@
  * State persists via appendEntry for crash resilience.
  *
  * Single-active invariant: starting a task moves any previously in_progress
- * task back to pending. Mirrors Claude Code's TodoWrite discipline so Opus
- * has a familiar single-active cursor.
+ * task back to pending. Mirrors Claude Code's TodoWrite discipline so the
+ * model has a familiar single-active cursor.
  *
  * Enforcement: first modifying tool_call without prior todo use → steering nag.
  * Second nag condition: extended modifying run with no in_progress task.

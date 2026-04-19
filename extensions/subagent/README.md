@@ -141,23 +141,32 @@ System prompt for the agent goes here.
 
 ### Model aliases
 
-To keep agent profiles provider-neutral, set aliases once in `settings.json`:
+To keep agent profiles provider-neutral, set aliases once in `settings.json`. Pick the flavour that matches your provider:
 
 ```json
-{
-  "opus-pack": {
-    "subagent": {
-      "modelAlias": {
-        "fast":     "claude-haiku-4-5",
-        "balanced": "claude-sonnet-4-6",
-        "slow":     "claude-opus-4-7"
-      }
-    }
-  }
-}
+// Anthropic
+{ "opus-pack": { "subagent": { "modelAlias": {
+  "fast":     "claude-haiku-4-5",
+  "balanced": "claude-sonnet-4-6",
+  "slow":     "claude-opus-4-7"
+}}}}
+
+// OpenAI
+{ "opus-pack": { "subagent": { "modelAlias": {
+  "fast":     "gpt-5.3-mini",
+  "balanced": "gpt-5.3",
+  "slow":     "gpt-5.3"
+}}}}
+
+// Local (Ollama / llama.cpp / vLLM)
+{ "opus-pack": { "subagent": { "modelAlias": {
+  "fast":     "ollama/qwen3-8b-instruct",
+  "balanced": "ollama/qwen3-30b-instruct",
+  "slow":     "ollama/llama3.1-70b-instruct"
+}}}}
 ```
 
-OpenAI/Ollama/locals — подставь соответствующие id (`gpt-5.3`, `qwen3-30b-instruct`, `ollama/llama3.1:70b`, …). Профили агентов в пакете используют `alias:fast` / `alias:balanced` / `alias:slow`, так что смена провайдера — одна правка settings, а не всех frontmatter'ов.
+Все shipped-профили используют `alias:fast` / `alias:balanced` / `alias:slow` — смена провайдера это одна правка settings, не все frontmatter'ы. Если alias не задан или пустой — subagent наследует дефолтную модель pi-сессии.
 
 **Locations:**
 - `~/.pi/agent/agents/*.md` - User-level (always loaded)

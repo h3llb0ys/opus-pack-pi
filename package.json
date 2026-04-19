@@ -1,11 +1,12 @@
 {
   "name": "opus-pack-pi",
   "version": "0.1.0",
-  "description": "Opinionated bundle for running Claude Opus inside pi-coding-agent: safety gates, hook bridge, status indicator, agent profiles.",
+  "description": "Opinionated, provider-neutral bundle for pi-coding-agent: Claude-Code-parity extensions (plan mode, todo, permissions, file-based commands, CC-style hooks, skills), subagent with isolated context, safety gates, model router, and more.",
   "keywords": [
     "pi-package",
     "pi-coding-agent",
-    "claude-opus"
+    "claude-code",
+    "provider-neutral"
   ],
   "license": "MIT",
   "repository": {

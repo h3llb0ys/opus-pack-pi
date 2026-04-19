@@ -1,7 +1,7 @@
 /**
  * log-tail — pi-native long-running task helpers.
  *
- * Opus launches detached processes with plain bash (`cmd > log 2>&1 & echo $! > pid`)
+ * The model launches detached processes with plain bash (`cmd > log 2>&1 & echo $! > pid`)
  * and uses these stateless tools to tail/kill them. No runtime process registry
  * lives in the extension — the source of truth is `/tmp/pi-bg-*.{log,pid}` on disk.
  *
