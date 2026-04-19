@@ -65,6 +65,7 @@ const OPUS_EXTENSIONS: ExtensionEntry[] = [
 	{ name: "ask-user", category: "integrations", description: "LLM tool to ask clarifying questions" },
 	{ name: "smart-compact", category: "integrations", description: "Merge compact-hints.md into /compact focus" },
 	{ name: "log-tail", category: "integrations", description: "log_tail/log_kill/log_ps + /bg picker" },
+	{ name: "edit-log", category: "integrations", description: "/edit-log — on-demand list of files edited this session" },
 
 	// dev (git helpers)
 	{ name: "auto-commit-on-exit", category: "dev", description: "Snapshot commit on pi exit" },

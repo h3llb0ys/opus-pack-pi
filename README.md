@@ -32,6 +32,7 @@ Opinionated bundle для запуска Claude Opus 4.7 внутри [pi-coding
 | `pi-search.ts` | `/pi-search [query]` — GitHub topic `pi-package` discovery + interactive install + `/reload`. Cache 1h. |
 | `mcp-compress.ts` | Схлопывает verbose MCP tool results в 1-строчные summaries (`ok  memory_save: saved, id=208, deduped`). Recognises saved/id/deduplicated/episode_id/count/error. Config `opus-pack.mcpCompress` (prefixes, maxLineLen, whitelist). |
 | `opus-pack-config.ts` | `/opus-pack` + `Ctrl+Alt+O` — пикер on/off всех extensions этого пакета. Persist в `settings.local.json` под `opus-pack.extensions.disabled`. Есть Save & Reload (без рестарта pi). Slot `off:N` в footer когда что-то выключено. |
+| `edit-log.ts` | `/edit-log` — on-demand история edit/write за сессию (файл → инструмент + время + snippet первой новой строки). Ничего не инжектит в system prompt — только по запросу. |
 
 ### Vendored extensions (из `pi-mono/examples/extensions/`)
 
