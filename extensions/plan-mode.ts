@@ -202,6 +202,14 @@ export default function (pi: ExtensionAPI) {
 		pi.appendEntry("plan-mode", { enabled: planModeEnabled, todos: todoItems, executing: executionMode });
 	};
 
+	const finalizePlan = (ctx: ExtensionContext) => {
+		executionMode = false;
+		todoItems = [];
+		pi.setActiveTools(NORMAL_MODE_TOOLS);
+		updateStatus(ctx);
+		persist();
+	};
+
 	const togglePlanMode = (ctx: ExtensionContext) => {
 		planModeEnabled = !planModeEnabled;
 		executionMode = false;
@@ -229,6 +237,20 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 			ctx.ui.notify(todoItems.map((t, i) => `${i + 1}. ${t.completed ? "✓" : "○"} ${t.text}`).join("\n"), "info");
+		},
+	});
+
+	pi.registerCommand("plan-close", {
+		description: "Force-close the active plan (hides checklist if model forgot [DONE:N] markers)",
+		handler: async (_args, ctx) => {
+			if (!executionMode && todoItems.length === 0) {
+				ctx.ui.notify("No active plan.", "info");
+				return;
+			}
+			const total = todoItems.length;
+			const done = todoItems.filter((t) => t.completed).length;
+			finalizePlan(ctx);
+			ctx.ui.notify(`Plan closed manually (${done}/${total} steps marked done).`, "info");
 		},
 	});
 
@@ -348,7 +370,14 @@ export default function (pi: ExtensionAPI) {
 		};
 	});
 
-	pi.on("before_agent_start", async () => {
+	pi.on("before_agent_start", async (_event, ctx) => {
+		// Defensive: plan was fully executed but the agent_end clear somehow
+		// missed (e.g. another extension cancelled agent_end, or persist lost).
+		// Closing on the next user prompt keeps a stale checklist from hanging
+		// across unrelated work. Idempotent when already clean.
+		if (executionMode && todoItems.length > 0 && todoItems.every((t) => t.completed)) {
+			finalizePlan(ctx);
+		}
 		if (planModeEnabled) {
 			return {
 				message: {
@@ -387,15 +416,12 @@ Create a numbered plan under a "Plan:" header. Do NOT make changes.`,
 	pi.on("agent_end", async (event, ctx) => {
 		if (executionMode && todoItems.length > 0) {
 			if (todoItems.every((t) => t.completed)) {
+				const stepCount = todoItems.length;
 				pi.sendMessage(
-					{ customType: "plan-complete", content: `**Plan complete!** ✓ All ${todoItems.length} steps done.`, display: true },
+					{ customType: "plan-complete", content: `**Plan complete!** ✓ All ${stepCount} steps done.`, display: true },
 					{ triggerTurn: false },
 				);
-				executionMode = false;
-				todoItems = [];
-				pi.setActiveTools(NORMAL_MODE_TOOLS);
-				updateStatus(ctx);
-				persist();
+				finalizePlan(ctx);
 			}
 			return;
 		}
