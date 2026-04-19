@@ -80,7 +80,8 @@ cd opus-pack-pi
 С GitHub (production на любой машине):
 
 ```sh
-pi install git:github.com/h3llb0ys/opus-pack-pi@v0.1
+# Замени <tag> на актуальный — см. https://github.com/h3llb0ys/opus-pack-pi/tags
+pi install git:github.com/h3llb0ys/opus-pack-pi@<tag>
 # Затем для community-пакетов и merge конфигов:
 bash "$(pi list | grep opus-pack-pi | awk '{print $NF}')/install.sh"
 ```
@@ -182,10 +183,10 @@ MCP-серверы живут отдельно в `~/.pi/agent/mcp.json` (фор
 Когда готов релиз:
 
 ```sh
-git tag v0.2 && git push origin main --tags
+git tag vX.Y && git push origin main --tags
 ```
 
-На других машинах: `pi install git:github.com/h3llb0ys/opus-pack-pi@v0.2`.
+На других машинах: `pi install git:github.com/h3llb0ys/opus-pack-pi@vX.Y`.
 
 ## License
 

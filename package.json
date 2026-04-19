@@ -21,10 +21,13 @@
       "./skills"
     ]
   },
+  "engines": {
+    "node": ">=18"
+  },
   "peerDependencies": {
-    "@mariozechner/pi-ai": "*",
-    "@mariozechner/pi-coding-agent": "*",
-    "@sinclair/typebox": "*"
+    "@mariozechner/pi-ai": ">=0.67",
+    "@mariozechner/pi-coding-agent": ">=0.67",
+    "@sinclair/typebox": ">=0.32"
   },
   "dependencies": {
     "minimatch": "^10.2.5"
