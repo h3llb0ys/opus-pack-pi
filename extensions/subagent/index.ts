@@ -28,6 +28,118 @@ const MAX_PARALLEL_TASKS = 8;
 const MAX_CONCURRENCY = 4;
 const COLLAPSED_ITEM_COUNT = 10;
 
+const PERSIST_DIR = ".pi/agents";
+const MAX_CONTINUE_SUMMARY_CHARS = 2000;
+
+const makeRunId = (agentName: string): string => {
+	const ts = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
+	const rand = Math.random().toString(36).slice(2, 5);
+	const safe = agentName.replace(/[^\w.-]+/g, "_");
+	return `${safe}-${ts}-${rand}`;
+};
+
+const persistPath = (projectRoot: string, runId: string): string =>
+	path.join(projectRoot, PERSIST_DIR, `${runId}.jsonl`);
+
+const persistEntry = (projectRoot: string, runId: string, entry: Record<string, unknown>): void => {
+	try {
+		const full = persistPath(projectRoot, runId);
+		fs.mkdirSync(path.dirname(full), { recursive: true });
+		fs.appendFileSync(full, JSON.stringify(entry) + "\n");
+	} catch {
+		/* best-effort; don't fail the run if disk is read-only */
+	}
+};
+
+const firstText = (msg: Message): string => {
+	if (msg.role !== "assistant" && msg.role !== "user") return "";
+	const content = (msg as any).content;
+	if (typeof content === "string") return content;
+	if (!Array.isArray(content)) return "";
+	for (const part of content) {
+		if (part?.type === "text" && typeof part.text === "string") return part.text;
+	}
+	return "";
+};
+
+interface PreviousRunSummary {
+	runId: string;
+	agent?: string;
+	task?: string;
+	firstAssistant?: string;
+	lastAssistant?: string;
+	touchedPaths: string[];
+	turns: number;
+}
+
+const loadPreviousRun = (projectRoot: string, runId: string): PreviousRunSummary | null => {
+	const full = persistPath(projectRoot, runId);
+	if (!fs.existsSync(full)) return null;
+	let lines: string[];
+	try {
+		lines = fs.readFileSync(full, "utf8").split("\n").filter((l) => l.trim().length > 0);
+	} catch {
+		return null;
+	}
+	const out: PreviousRunSummary = { runId, touchedPaths: [], turns: 0 };
+	const seenPaths = new Set<string>();
+	const assistantTexts: string[] = [];
+	for (const line of lines) {
+		let entry: any;
+		try { entry = JSON.parse(line); } catch { continue; }
+		if (entry.type === "run_meta") {
+			out.agent = entry.agent;
+			out.task = entry.task;
+			continue;
+		}
+		if (entry.type === "message" && entry.message) {
+			const msg = entry.message as Message;
+			if (msg.role === "assistant") {
+				out.turns += 1;
+				const text = firstText(msg);
+				if (text.trim()) assistantTexts.push(text.trim());
+			}
+		}
+		if (entry.type === "tool_result" && entry.message) {
+			const tr = entry.message as any;
+			const input = tr?.toolCall?.arguments ?? tr?.input ?? {};
+			const p = String(input?.path ?? input?.file_path ?? "").trim();
+			if (p && !seenPaths.has(p)) { seenPaths.add(p); out.touchedPaths.push(p); }
+		}
+	}
+	if (assistantTexts.length > 0) {
+		out.firstAssistant = assistantTexts[0];
+		out.lastAssistant = assistantTexts[assistantTexts.length - 1];
+	}
+	return out;
+};
+
+const formatContinuationPreamble = (prev: PreviousRunSummary): string => {
+	const clip = (s: string | undefined, n: number): string =>
+		s ? (s.length > n ? s.slice(0, n - 1) + "…" : s) : "(empty)";
+	const pathsShown = prev.touchedPaths.slice(-20);
+	const suffix = prev.touchedPaths.length > pathsShown.length
+		? ` (+${prev.touchedPaths.length - pathsShown.length} more)`
+		: "";
+	const lines = [
+		`## Previous subagent run: ${prev.runId}`,
+		prev.agent ? `Agent: ${prev.agent}` : "",
+		prev.task ? `Original task: ${clip(prev.task, 240)}` : "",
+		`Turns: ${prev.turns}`,
+		"",
+		`First assistant message (excerpt):`,
+		clip(prev.firstAssistant, 600),
+		"",
+		`Last assistant message (excerpt):`,
+		clip(prev.lastAssistant, 800),
+		"",
+		pathsShown.length > 0 ? `Paths touched${suffix}: ${pathsShown.join(", ")}` : "",
+	].filter(Boolean).join("\n");
+	return lines.length > MAX_CONTINUE_SUMMARY_CHARS
+		? lines.slice(0, MAX_CONTINUE_SUMMARY_CHARS - 1) + "…"
+		: lines;
+};
+
 function formatTokens(count: number): string {
 	if (count < 1000) return count.toString();
 	if (count < 10000) return `${(count / 1000).toFixed(1)}k`;
@@ -235,6 +347,11 @@ function getPiInvocation(args: string[]): { command: string; args: string[] } {
 
 type OnUpdateCallback = (partial: AgentToolResult<SubagentDetails>) => void;
 
+interface PersistContext {
+	projectRoot: string;
+	runId: string;
+}
+
 async function runSingleAgent(
 	defaultCwd: string,
 	agents: AgentConfig[],
@@ -245,6 +362,8 @@ async function runSingleAgent(
 	signal: AbortSignal | undefined,
 	onUpdate: OnUpdateCallback | undefined,
 	makeDetails: (results: SingleResult[]) => SubagentDetails,
+	persistCtx: PersistContext | null,
+	continueSummary: string | null,
 ): Promise<SingleResult> {
 	const agent = agents.find((a) => a.name === agentName);
 
@@ -291,11 +410,26 @@ async function runSingleAgent(
 	};
 
 	try {
-		if (agent.systemPrompt.trim()) {
-			const tmp = await writePromptToTempFile(agent.name, agent.systemPrompt);
+		const parts: string[] = [];
+		if (agent.systemPrompt.trim()) parts.push(agent.systemPrompt.trim());
+		if (continueSummary) parts.push(continueSummary);
+		if (parts.length > 0) {
+			const tmp = await writePromptToTempFile(agent.name, parts.join("\n\n---\n\n"));
 			tmpPromptDir = tmp.dir;
 			tmpPromptPath = tmp.filePath;
 			args.push("--append-system-prompt", tmpPromptPath);
+		}
+		if (persistCtx) {
+			persistEntry(persistCtx.projectRoot, persistCtx.runId, {
+				type: "run_meta",
+				runId: persistCtx.runId,
+				agent: agent.name,
+				task,
+				cwd: cwd ?? defaultCwd,
+				startedAt: new Date().toISOString(),
+				step,
+				continuedFromSummary: Boolean(continueSummary),
+			});
 		}
 
 		args.push(`Task: ${task}`);
@@ -322,6 +456,7 @@ async function runSingleAgent(
 				if (event.type === "message_end" && event.message) {
 					const msg = event.message as Message;
 					currentResult.messages.push(msg);
+					if (persistCtx) persistEntry(persistCtx.projectRoot, persistCtx.runId, { type: "message", message: msg });
 
 					if (msg.role === "assistant") {
 						currentResult.usage.turns++;
@@ -342,7 +477,9 @@ async function runSingleAgent(
 				}
 
 				if (event.type === "tool_result_end" && event.message) {
-					currentResult.messages.push(event.message as Message);
+					const msg = event.message as Message;
+					currentResult.messages.push(msg);
+					if (persistCtx) persistEntry(persistCtx.projectRoot, persistCtx.runId, { type: "tool_result", message: msg });
 					emitUpdate();
 				}
 			};
@@ -381,6 +518,14 @@ async function runSingleAgent(
 		});
 
 		currentResult.exitCode = exitCode;
+		if (persistCtx) persistEntry(persistCtx.projectRoot, persistCtx.runId, {
+			type: "run_end",
+			runId: persistCtx.runId,
+			exitCode,
+			endedAt: new Date().toISOString(),
+			turns: currentResult.usage.turns,
+			stopReason: currentResult.stopReason,
+		});
 		if (wasAborted) throw new Error("Subagent was aborted");
 		return currentResult;
 	} finally {
@@ -420,6 +565,9 @@ const SubagentParams = Type.Object({
 		Type.Boolean({ description: "Prompt before running project-local agents. Default: true.", default: true }),
 	),
 	cwd: Type.Optional(Type.String({ description: "Working directory for the agent process (single mode)" })),
+	continue_from: Type.Optional(Type.String({
+		description: "Previous run id (see .pi/agents/*.jsonl). Compressed summary of that run is prepended to the agent's system prompt so the new one-shot continues from that context. Single/chain modes only.",
+	})),
 });
 
 export default function (pi: ExtensionAPI) {
@@ -439,6 +587,20 @@ export default function (pi: ExtensionAPI) {
 			const discovery = discoverAgents(ctx.cwd, agentScope);
 			const agents = discovery.agents;
 			const confirmProjectAgents = params.confirmProjectAgents ?? true;
+
+			const projectRoot = ctx.cwd;
+			let continueSummary: string | null = null;
+			if (params.continue_from) {
+				const prev = loadPreviousRun(projectRoot, params.continue_from);
+				if (!prev) {
+					return {
+						content: [{ type: "text", text: `continue_from: no run "${params.continue_from}" at ${PERSIST_DIR}/. Nothing to continue.` }],
+						details: makeDetails(hasChain ? "chain" : hasTasks ? "parallel" : "single")([]),
+						isError: true,
+					};
+				}
+				continueSummary = "PREVIOUS RUN SUMMARY (continue from here):\n\n" + formatContinuationPreamble(prev);
+			}
 
 			const hasChain = (params.chain?.length ?? 0) > 0;
 			const hasTasks = (params.tasks?.length ?? 0) > 0;
@@ -515,6 +677,7 @@ export default function (pi: ExtensionAPI) {
 							}
 						: undefined;
 
+					const stepRunId = makeRunId(step.agent);
 					const result = await runSingleAgent(
 						ctx.cwd,
 						agents,
@@ -525,6 +688,8 @@ export default function (pi: ExtensionAPI) {
 						signal,
 						chainUpdate,
 						makeDetails("chain"),
+						{ projectRoot, runId: stepRunId },
+						i === 0 ? continueSummary : null,
 					);
 					results.push(result);
 
@@ -589,6 +754,7 @@ export default function (pi: ExtensionAPI) {
 				};
 
 				const results = await mapWithConcurrencyLimit(params.tasks, MAX_CONCURRENCY, async (t, index) => {
+					const parRunId = makeRunId(t.agent);
 					const result = await runSingleAgent(
 						ctx.cwd,
 						agents,
@@ -605,6 +771,8 @@ export default function (pi: ExtensionAPI) {
 							}
 						},
 						makeDetails("parallel"),
+						{ projectRoot, runId: parRunId },
+						null,
 					);
 					allResults[index] = result;
 					emitParallelUpdate();
@@ -629,6 +797,7 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			if (params.agent && params.task) {
+				const singleRunId = makeRunId(params.agent);
 				const result = await runSingleAgent(
 					ctx.cwd,
 					agents,
@@ -639,6 +808,8 @@ export default function (pi: ExtensionAPI) {
 					signal,
 					onUpdate,
 					makeDetails("single"),
+					{ projectRoot, runId: singleRunId },
+					continueSummary,
 				);
 				const isError = result.exitCode !== 0 || result.stopReason === "error" || result.stopReason === "aborted";
 				if (isError) {
