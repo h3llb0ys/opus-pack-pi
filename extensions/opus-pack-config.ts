@@ -24,9 +24,9 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { Key } from "@mariozechner/pi-tui";
 import { listDisabledExtensions, setExtensionDisabled } from "../lib/settings.js";
 
-type Category = "safety" | "tasks" | "ui" | "integrations" | "dev";
+export type Category = "safety" | "tasks" | "ui" | "integrations" | "dev";
 
-interface ExtensionEntry {
+export interface ExtensionEntry {
 	name: string;
 	category: Category;
 	description: string;
@@ -35,7 +35,7 @@ interface ExtensionEntry {
 
 // Single source of truth for what `/opus-pack` shows. Keep in sync when
 // adding or renaming extensions in this pack.
-const OPUS_EXTENSIONS: ExtensionEntry[] = [
+export const OPUS_EXTENSIONS: ExtensionEntry[] = [
 	// safety
 	{ name: "permissions", category: "safety", description: "Granular allow/deny rules + interactive 4-way prompt" },
 	{ name: "safe-deny", category: "safety", description: "Structured bash denylist (argv parser)", critical: true },
