@@ -13,11 +13,6 @@
 - Не пиши комментарии "что код делает". Только WHY для неочевидных мест: hidden constraints, workarounds, surprising invariants.
 - Никогда `git commit --no-verify`, `git push --force` на main/master, `rm -rf` без явной просьбы.
 
-### Memory (claude-total-memory через MCP)
-- В начале сессии вызывай `ctm_memory_recall` по cwd / git-branch — подтянет накопленные lessons по проекту.
-- Сохраняй durable lessons через `ctm_memory_save`: правила, неочевидные решения, причины архитектурных выборов. **Не** сохраняй эфемерное (текущий task, in-progress state).
-- Если задача типовая — `ctm_memory_associate` для связывания записей в граф.
-
 ### Plan Mode
 - `/plan` или `Ctrl+Alt+P` — read-only exploration. Модель создаёт numbered plan, пользователь подтверждает execution.
 - `[DONE:N]` маркеры для tracking прогресса при execution.

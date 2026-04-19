@@ -62,7 +62,6 @@ Opinionated bundle для запуска Claude Opus 4.7 внутри [pi-coding
 
 - [pi](https://pi.dev) (`brew install pi` или см. pi.dev)
 - `jq` (`brew install jq` / `apt install jq`)
-- [claude-total-memory](https://github.com/vitaliimacpro/claude-total-memory) — для memory MCP сервера (опционально, без него просто не будут доступны `ctm_memory_*` tools)
 
 ## Quick install
 
@@ -99,15 +98,6 @@ bash "$(pi list | grep opus-pack-pi | awk '{print $NF}')/install.sh"
 
 ```json
 {
-  "mcpServers": {
-    "ctm": {
-      "command": "/Users/smirnov_as/extra/mcp/claude-total-memory/.venv/bin/claude-total-memory",
-      "args": [],
-      "lifecycle": "lazy",
-      "idleTimeout": 60,
-      "toolPrefix": "server"
-    }
-  },
   "hooks": {
     "PreToolUse": [],
     "PostToolUse": [],
@@ -123,6 +113,8 @@ bash "$(pi list | grep opus-pack-pi | awk '{print $NF}')/install.sh"
 
 Для своих хуков просто дописывай элементы в массивы `PreToolUse` / `Stop` / ... в формате Claude Code. `hook-bridge.ts` подхватит без рестарта через `/reload`.
 
+MCP-серверы живут отдельно в `~/.pi/agent/mcp.json` (формат см. `mcp.json.example`). Пакет по умолчанию ничего туда не кладёт — добавляй свои серверы сам.
+
 Чтобы **выключить** какой-то extension из пакета — фильтр в `settings.json`:
 
 ```json
@@ -136,7 +128,6 @@ bash "$(pi list | grep opus-pack-pi | awk '{print $NF}')/install.sh"
 
 ## Troubleshooting
 
-- **`ctm_*` tools не появились** — проверь что `pi-mcp-adapter` установлен (`pi list`) и что `claude-total-memory` бинарь существует и исполняемый. При первом вызове tool'а lazy-подключение занимает 3-5 секунд.
 - **`/status` падает** — pi'шный API интроспекции может быть приватным в некоторых билдах; status.ts защищён try/catch, показывает что смог.
 - **Hook не срабатывает** — проверь что `matcher` соответствует имени tool'а (например `bash`, не `Bash`). Stdout хука должен быть валидным JSON с `{"block": true, "reason": "..."}` для блокировки.
 - **`pi list` пуст после install** — pi может требовать рестарта после первого `pi install`. Запусти `pi` один раз, убедись что extensions загрузились, потом выполни повторно `install.sh` для merge settings.

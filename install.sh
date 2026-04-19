@@ -6,7 +6,6 @@
 # - Регистрирует локальный путь репо в pi (если ещё не зарегистрирован)
 # - Безопасно мерджит settings.json через jq (не перезаписывает чужие ключи)
 # - Append APPEND_SYSTEM.md в ~/.pi/agent/APPEND_SYSTEM.md (с маркерами для clean uninstall)
-# - Проверяет что claude-total-memory MCP-сервер доступен
 #
 # Запускать многократно безопасно — печатает [skip] для уже сделанного.
 
@@ -115,17 +114,7 @@ if [ ! -d "$REPO_DIR/node_modules/minimatch" ]; then
     (cd "$REPO_DIR" && npm install --omit=dev) 2>/dev/null || warn "npm install failed — permissions extension may not load"
 fi
 
-# 8. claude-total-memory health check (запускается через python src/server.py, не entry-point)
-CTM_PY="$HOME/extra/mcp/claude-total-memory/.venv/bin/python"
-CTM_SRV="$HOME/extra/mcp/claude-total-memory/src/server.py"
-if [ -x "$CTM_PY" ] && [ -f "$CTM_SRV" ]; then
-	ok "claude-total-memory MCP server найден: $CTM_PY $CTM_SRV"
-else
-	warn "claude-total-memory не найден ($CTM_PY $CTM_SRV) — MCP tools будут недоступны"
-	echo "       fix: cd ~/extra/mcp/claude-total-memory && uv venv .venv && .venv/bin/pip install -r requirements.txt"
-fi
-
-# 9. Final report
+# 8. Final report
 printf "\n═══ Opus Pack установлен ═══\n"
 echo "Repo:      $REPO_DIR"
 echo "Settings:  $SETTINGS"

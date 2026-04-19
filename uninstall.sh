@@ -11,7 +11,6 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 PI_DIR="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}"
 SETTINGS="$PI_DIR/settings.json"
-MCP_JSON="$PI_DIR/mcp.json"
 APPEND_SYS="$PI_DIR/APPEND_SYSTEM.md"
 
 c_info=$'\033[0;36m'; c_off=$'\033[0m'
@@ -45,13 +44,6 @@ if [ -f "$SETTINGS" ] && command -v jq >/dev/null; then
 	log clean "$SETTINGS (opus-pack, hooks удалены)"
 else
 	log skip "settings.json (нет файла или нет jq)"
-fi
-
-# 2b. Чистим mcp.json (только наш ctm — пользовательские сервера остаются)
-if [ -f "$MCP_JSON" ] && command -v jq >/dev/null; then
-	TMP="$(mktemp)"
-	jq 'del(.mcpServers.ctm)' "$MCP_JSON" > "$TMP" && mv "$TMP" "$MCP_JSON"
-	log clean "$MCP_JSON (mcpServers.ctm удалён)"
 fi
 
 # 3. Вырезаем Opus Pack rules из APPEND_SYSTEM.md
