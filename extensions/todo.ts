@@ -51,12 +51,17 @@ const renderWidget = (ctx: ExtensionContext, items: TodoEntry[]) => {
 	const badge = inProg ? `▶ ${done}/${items.length}` : `${done}/${items.length}`;
 	ctx.ui.setStatus("02-todo", ctx.ui.theme.fg("accent", badge));
 
-	// Order: in_progress → pending → done. Done sinks so truncation hides it.
-	const ordered = [
-		...items.filter((t) => t.status === "in_progress"),
-		...items.filter((t) => t.status === "pending"),
-		...items.filter((t) => t.status === "done"),
-	];
+	// For short lists keep insertion order so the user reads them top-to-bottom
+	// exactly as the model planned. For long lists reorder
+	// (in_progress → pending → done) so the "done" tail sinks below truncation.
+	const TRUNCATE_THRESHOLD = 10;
+	const ordered = items.length > TRUNCATE_THRESHOLD
+		? [
+			...items.filter((t) => t.status === "in_progress"),
+			...items.filter((t) => t.status === "pending"),
+			...items.filter((t) => t.status === "done"),
+		]
+		: items;
 	ctx.ui.setWidget("todo", ordered.map((t) => {
 		if (t.status === "done") {
 			return ctx.ui.theme.fg("success", "■") + " " + ctx.ui.theme.fg("muted", ctx.ui.theme.strikethrough(t.text));
