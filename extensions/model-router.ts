@@ -34,6 +34,7 @@ interface RouterConfig {
 	autoBumpAfterTurns: number;
 	levels: Record<string, LevelConfig>;
 	rules: RouterRule[];
+	rateLimitDowngrade: boolean;
 }
 
 const DEFAULT_CONFIG: RouterConfig = {
@@ -42,6 +43,7 @@ const DEFAULT_CONFIG: RouterConfig = {
 	autoBumpAfterTurns: 0,
 	levels: {},
 	rules: [],
+	rateLimitDowngrade: true,
 };
 
 interface Decision {
@@ -134,6 +136,12 @@ export default function (pi: ExtensionAPI) {
 	let lastLevel: string | null = null;
 	let turnsSinceBump = 0;
 	const log: Decision[] = [];
+	// Rate-limit: when a provider returns 429 we drop one level down and pin
+	// there until the retry-after window passes. Reset to normal routing on
+	// expiry.
+	let downgradeUntilMs = 0;
+	let downgradeOriginalLevel: string | null = null;
+	let downgradeNoticeShown = false;
 
 	const pushLog = (d: Decision) => {
 		log.push(d);
@@ -172,6 +180,25 @@ export default function (pi: ExtensionAPI) {
 			const evaluated = evalRules(event.prompt, cfg);
 			level = evaluated.level;
 			matchedRule = evaluated.matchedRule;
+		}
+
+		// If we're inside a rate-limit window, clamp the chosen level one
+		// step down in the configured order. Expire the pin once the wait
+		// elapses.
+		if (cfg.rateLimitDowngrade && downgradeUntilMs > 0) {
+			if (Date.now() >= downgradeUntilMs) {
+				downgradeUntilMs = 0;
+				downgradeOriginalLevel = null;
+				downgradeNoticeShown = false;
+				ctx.ui.notify(`router: rate-limit window expired, resuming normal routing`, "info");
+			} else {
+				const ordered = Object.keys(cfg.levels);
+				const idx = ordered.indexOf(level);
+				if (idx > 0) {
+					level = ordered[idx - 1];
+					matchedRule = "rateLimitDowngrade";
+				}
+			}
 		}
 
 		// Auto-bump: if we've been at the same level for N turns without
@@ -236,6 +263,39 @@ export default function (pi: ExtensionAPI) {
 			matchedRule,
 			promptSnippet: snippet(event.prompt),
 		});
+	});
+
+	const parseRetryAfter = (headers: Record<string, string>, fallbackSeconds: number): number => {
+		const raw = headers["retry-after"] ?? headers["Retry-After"] ?? headers["x-ratelimit-reset"] ?? "";
+		if (!raw) return fallbackSeconds * 1000;
+		const asNumber = Number.parseFloat(raw);
+		if (Number.isFinite(asNumber) && asNumber > 0) return Math.min(asNumber, 300) * 1000; // cap at 5 min
+		// HTTP-date fallback.
+		const asDate = Date.parse(raw);
+		if (Number.isFinite(asDate)) return Math.max(1000, asDate - Date.now());
+		return fallbackSeconds * 1000;
+	};
+
+	pi.on("after_provider_response", async (event, ctx) => {
+		if (event.status !== 429) return;
+		const cfg = loadConfig();
+		if (!cfg.rateLimitDowngrade) return;
+		const waitMs = parseRetryAfter(event.headers, 30);
+		downgradeUntilMs = Math.max(downgradeUntilMs, Date.now() + waitMs);
+		if (!downgradeOriginalLevel) downgradeOriginalLevel = lastLevel;
+		if (!downgradeNoticeShown) {
+			const ordered = Object.keys(cfg.levels);
+			const fromLevel = lastLevel ?? cfg.default;
+			const idx = ordered.indexOf(fromLevel);
+			const target = idx > 0 ? ordered[idx - 1] : "(no lower level)";
+			const waitSec = Math.ceil(waitMs / 1000);
+			ctx.ui.notify(
+				`⚠ router: 429 rate-limited on ${fromLevel}. Downgrading to ${target} for ~${waitSec}s.`,
+				"warning",
+			);
+			downgradeNoticeShown = true;
+		}
+		setStatus(ctx, ctx.ui.theme.fg("warning", `↘ rate-limit ${Math.ceil((downgradeUntilMs - Date.now()) / 1000)}s`));
 	});
 
 	pi.registerCommand("router", {
