@@ -85,7 +85,31 @@ pi install git:github.com/h3llb0ys/opus-pack-pi@v0.1
 bash "$(pi list | grep opus-pack-pi | awk '{print $NF}')/install.sh"
 ```
 
-`install.sh` идемпотентный — повторный запуск безопасен, для уже установленного печатает `[skip]`.
+`install.sh` идемпотентный — повторный запуск безопасен, для уже установленного печатает `[skip]`. `opus-pack` блок в `settings.json` deep-merge'ится через jq, пользовательские ключи сохраняются.
+
+## Provider setup (после install)
+
+Пакет провайдер-нейтрален. Работающий setup для любого провайдера:
+
+1. Убедись что `pi` знает твой провайдер (ключ в env или `~/.pi/agent/auth.json`).
+2. Открой `~/.pi/agent/settings.json` и заполни **`opus-pack.subagent.modelAlias`** — так все bundled-профили (`explore`, `verify`, `scout`, `planner`, `worker`, `reviewer`, `general-purpose`) получат рабочие модели:
+
+   ```json
+   // Anthropic
+   "modelAlias": { "fast": "claude-haiku-4-5", "balanced": "claude-sonnet-4-6", "slow": "claude-opus-4-7" }
+
+   // OpenAI
+   "modelAlias": { "fast": "gpt-5.3-mini", "balanced": "gpt-5.3", "slow": "gpt-5.3" }
+
+   // Ollama / local
+   "modelAlias": { "fast": "qwen3-8b-instruct", "balanced": "qwen3-30b-instruct", "slow": "llama3.1-70b-instruct" }
+   ```
+
+   Если оставить пустым — subagent унаследует default-модель pi-сессии.
+
+3. (Опционально) заполни `opus-pack.modelRouter.levels` для авто-переключения модели в основной сессии. Примеры см. в `settings.json.example` (ключи `_levels_example_*`).
+
+Готовые multi-provider примеры для обоих блоков лежат в `settings.json.example` — копируй тот, что под твой провайдер.
 
 ## Что `install.sh` трогает
 
