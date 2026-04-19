@@ -51,6 +51,10 @@ export default function (pi: ExtensionAPI) {
 	// clear the set before the next LLM request sees it.
 	const tempVisible = new Set<string>();
 	let loadedThisTurn = false;
+	// Track whether we've ever hidden tools; needed so a mid-session toggle
+	// from enabled=true → false restores the full tool list instead of
+	// leaving MCP tools silently hidden until /reload.
+	let hasActiveHiding = false;
 
 	const allowed = (toolName: string, cfg: DeferredToolsConfig, mcpRe: RegExp, extraRes: RegExp[]): boolean => {
 		if (toolName === "tool_search" || toolName === "tool_load") return true;
@@ -63,6 +67,13 @@ export default function (pi: ExtensionAPI) {
 		const cfg = loadOpusPackSection("deferredTools", DEFAULT_CFG);
 		if (!cfg.enabled) {
 			ctx.ui.setStatus("05-deferred", undefined);
+			// Unhide if we had been hiding; otherwise don't touch — pi's own
+			// setActiveTools state is authoritative and we don't want to fight
+			// other extensions (e.g. plan-mode's read-only whitelist).
+			if (hasActiveHiding) {
+				pi.setActiveTools(pi.getAllTools().map((t) => t.name));
+				hasActiveHiding = false;
+			}
 			return { hidden: 0, shown: 0 };
 		}
 		const mcpRe = compileMcp(cfg.mcpPattern);
@@ -71,6 +82,7 @@ export default function (pi: ExtensionAPI) {
 		const keep = all.filter((t) => allowed(t.name, cfg, mcpRe, extraRes)).map((t) => t.name);
 		pi.setActiveTools(keep);
 		const hidden = all.length - keep.length;
+		hasActiveHiding = hidden > 0;
 		ctx.ui.setStatus(
 			"05-deferred",
 			hidden > 0 ? ctx.ui.theme.fg("muted", `hidden:${hidden}`) : undefined,

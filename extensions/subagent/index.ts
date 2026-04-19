@@ -13,6 +13,7 @@
  */
 
 import { spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -65,7 +66,10 @@ const MAX_CONTINUE_SUMMARY_CHARS = 2000;
 
 const makeRunId = (agentName: string): string => {
 	const ts = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
-	const rand = Math.random().toString(36).slice(2, 5);
+	// 6 hex chars from crypto ≈ 1 in 16M collision per second-bucket. Prior
+	// Math.random with 3 chars was ~1 in 46k which could realistically
+	// collide when parallel subagents spin up in the same second.
+	const rand = randomBytes(3).toString("hex");
 	const safe = agentName.replace(/[^\w.-]+/g, "_");
 	return `${safe}-${ts}-${rand}`;
 };

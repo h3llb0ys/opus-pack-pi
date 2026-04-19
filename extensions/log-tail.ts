@@ -145,10 +145,18 @@ const readNewBytes = (path: string, fromOffset: number): { text: string; newOffs
 	const buf = Buffer.alloc(bytesToRead);
 	const fd = openSync(path, "r");
 	try { readSync(fd, buf, 0, buf.length, fromOffset); } finally { closeSync(fd); }
+	// Trim back to last \n so we don't split a line across two pushes. Skip
+	// trim if we've read everything up to EOF (no partial line remains).
+	const truncated = bytesAvail > bytesToRead;
+	let usableBytes = buf.length;
+	if (truncated) {
+		const lastNl = buf.lastIndexOf(0x0a);
+		if (lastNl > 0) usableBytes = lastNl + 1;
+	}
 	return {
-		text: buf.toString("utf8"),
-		newOffset: fromOffset + bytesToRead,
-		truncated: bytesAvail > bytesToRead,
+		text: buf.slice(0, usableBytes).toString("utf8"),
+		newOffset: fromOffset + usableBytes,
+		truncated,
 	};
 };
 

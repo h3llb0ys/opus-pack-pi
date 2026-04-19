@@ -15,7 +15,7 @@
  * Claude Code does — that would sidestep `permissions.ts`.
  */
 
-import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
+import { readFileSync, readdirSync, lstatSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, relative } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
@@ -40,8 +40,10 @@ interface LoadedCommand {
 }
 
 const MAX_FILE_BYTES = 64 * 1024;
+const MAX_WALK_DEPTH = 8;
 
-const walkMd = (root: string, out: string[]) => {
+const walkMd = (root: string, out: string[], depth = 0) => {
+	if (depth > MAX_WALK_DEPTH) return;
 	if (!existsSync(root)) return;
 	let entries: string[];
 	try {
@@ -53,12 +55,15 @@ const walkMd = (root: string, out: string[]) => {
 		const full = join(root, name);
 		let st;
 		try {
-			st = statSync(full);
+			// lstatSync so symlinks don't trick us into recursing into parent
+			// directories (e.g. `.claude/commands/loop -> ..`). We only follow
+			// regular files and regular directories.
+			st = lstatSync(full);
 		} catch {
 			continue;
 		}
 		if (st.isDirectory()) {
-			walkMd(full, out);
+			walkMd(full, out, depth + 1);
 		} else if (st.isFile() && name.endsWith(".md") && st.size <= MAX_FILE_BYTES) {
 			out.push(full);
 		}
