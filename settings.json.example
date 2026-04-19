@@ -11,7 +11,11 @@
 
   "opus-pack": {
     "_comment": "Флаги opus-pack-pi extensions.",
-    "max-turns": 40,
+    "iterationGuard": {
+      "_comment": "Cap on agent turns per run. /continue extends by extendBy.",
+      "defaultCap": 40,
+      "extendBy": 20
+    },
     "safe-deny": {
       "enabled": true
     },
