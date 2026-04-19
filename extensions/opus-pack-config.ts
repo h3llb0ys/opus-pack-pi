@@ -269,9 +269,13 @@ const findExtension = (needle: string): { hit?: ExtensionEntry; suggestions: str
 	const lower = needle.toLowerCase();
 	const hit = OPUS_EXTENSIONS.find((e) => e.name.toLowerCase() === lower);
 	if (hit) return { hit, suggestions: [] };
+	// Rank substring hits by how close their length is to the query so
+	// `off p` doesn't dump every extension containing "p" in input-file
+	// order — closest-length matches come first.
 	const suggestions = OPUS_EXTENSIONS
-		.filter((e) => e.name.toLowerCase().includes(lower) || lower.includes(e.name.toLowerCase()))
 		.map((e) => e.name)
+		.filter((n) => n.toLowerCase().includes(lower) || lower.includes(n.toLowerCase()))
+		.sort((a, b) => Math.abs(a.length - needle.length) - Math.abs(b.length - needle.length))
 		.slice(0, 3);
 	return { suggestions };
 };
@@ -373,8 +377,12 @@ const runCli = async (
 	}
 
 	if (verb === "on" || verb === "off") {
-		const name = tokens[1];
-		const force = tokens.includes("--force");
+		// Treat any leading-dashed token as a flag so `off --force plan-mode`
+		// and `off plan-mode --force` both work.
+		const flags = tokens.slice(1).filter((t) => t.startsWith("--"));
+		const positional = tokens.slice(1).filter((t) => !t.startsWith("--"));
+		const name = positional[0];
+		const force = flags.includes("--force");
 		if (!name) {
 			ctx.ui.notify(`${verb} requires an extension name. Run /opus-pack list for choices.`, "warning");
 			return;
