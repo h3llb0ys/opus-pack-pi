@@ -11,8 +11,9 @@ import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Key } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { parseFrontmatter } from "@mariozechner/pi-coding-agent";
 import { isExtensionDisabled, loadOpusPackSection } from "../lib/settings.js";
 
 interface PlanModeConfig {
@@ -25,11 +26,30 @@ const DEFAULT_PLAN_CFG: PlanModeConfig = { autoSave: false, dir: ".pi/plans" };
 const slugify = (s: string): string =>
 	s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 40) || "plan";
 
+type PlanStatus = "approved" | "rejected" | "non-interactive" | "completed" | "closed";
+
+interface PlanFrontmatter {
+	created?: string;
+	status?: string;
+	done_steps?: number[];
+}
+
+const formatFrontmatter = (fm: PlanFrontmatter, body: string): string => {
+	const lines = ["---"];
+	if (fm.created) lines.push(`created: ${fm.created}`);
+	if (fm.status) lines.push(`status: ${fm.status}`);
+	if (fm.done_steps && fm.done_steps.length > 0) {
+		lines.push(`done_steps: [${fm.done_steps.join(", ")}]`);
+	}
+	lines.push("---", "", body.trim(), "");
+	return lines.join("\n");
+};
+
 const savePlanToFile = (
 	cwd: string,
 	dirRel: string,
 	plan: string,
-	status: "approved" | "rejected" | "non-interactive",
+	status: PlanStatus,
 	firstStep: string,
 	customName?: string,
 ): { path: string } | { error: string } => {
@@ -39,20 +59,72 @@ const savePlanToFile = (
 		const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
 		const slug = customName ? slugify(customName) : slugify(firstStep);
 		const path = join(dirAbs, `${ts}-${slug}.md`);
-		const body = [
-			"---",
-			`created: ${new Date().toISOString()}`,
-			`status: ${status}`,
-			"---",
-			"",
-			plan.trim(),
-			"",
-		].join("\n");
-		writeFileSync(path, body);
+		writeFileSync(path, formatFrontmatter({ created: new Date().toISOString(), status }, plan));
 		return { path };
 	} catch (e) {
 		return { error: (e as Error).message };
 	}
+};
+
+/**
+ * Update an existing plan file's frontmatter — typically to record
+ * `done_steps` as the model marks progress, or to flip `status` to
+ * `completed`/`closed` when the plan finishes. Body is preserved verbatim.
+ * Silent on failure so a read-only fs doesn't break the agent run.
+ */
+const updatePlanFile = (
+	path: string,
+	patch: { done_steps?: number[]; status?: string },
+): void => {
+	try {
+		if (!existsSync(path)) return;
+		const raw = readFileSync(path, "utf8");
+		const { frontmatter, body } = parseFrontmatter<PlanFrontmatter>(raw);
+		const next: PlanFrontmatter = {
+			created: typeof frontmatter.created === "string" ? frontmatter.created : new Date().toISOString(),
+			status: patch.status ?? (typeof frontmatter.status === "string" ? frontmatter.status : "approved"),
+			done_steps: patch.done_steps ?? (Array.isArray(frontmatter.done_steps) ? frontmatter.done_steps : undefined),
+		};
+		writeFileSync(path, formatFrontmatter(next, body));
+	} catch {
+		/* best-effort */
+	}
+};
+
+interface PlanFileInfo {
+	path: string;
+	created: string;
+	status: string;
+	doneSteps: number[];
+	mtimeMs: number;
+	slug: string;
+}
+
+const listPlanFiles = (cwd: string, dirRel: string): PlanFileInfo[] => {
+	const dirAbs = join(cwd, dirRel);
+	if (!existsSync(dirAbs)) return [];
+	let entries: string[];
+	try { entries = readdirSync(dirAbs); } catch { return []; }
+	const out: PlanFileInfo[] = [];
+	for (const name of entries) {
+		if (!name.endsWith(".md")) continue;
+		const full = join(dirAbs, name);
+		let stat;
+		try { stat = statSync(full); } catch { continue; }
+		if (!stat.isFile()) continue;
+		let raw: string;
+		try { raw = readFileSync(full, "utf8"); } catch { continue; }
+		const { frontmatter } = parseFrontmatter<PlanFrontmatter>(raw);
+		out.push({
+			path: full,
+			created: typeof frontmatter.created === "string" ? frontmatter.created : "",
+			status: typeof frontmatter.status === "string" ? frontmatter.status : "unknown",
+			doneSteps: Array.isArray(frontmatter.done_steps) ? frontmatter.done_steps.map(Number).filter((n) => Number.isFinite(n)) : [],
+			mtimeMs: stat.mtimeMs,
+			slug: name.replace(/\.md$/, ""),
+		});
+	}
+	return out.sort((a, b) => b.mtimeMs - a.mtimeMs);
 };
 
 const PLAN_MODE_TOOLS = ["read", "bash", "grep", "find", "ls"];
@@ -166,6 +238,18 @@ export default function (pi: ExtensionAPI) {
 	let planModeEnabled = false;
 	let executionMode = false;
 	let todoItems: TodoItem[] = [];
+	// Path to the .pi/plans/<slug>.md file currently driving execution. Set
+	// when exit_plan_mode persists and when /plan-resume picks an old plan up.
+	// Used to write done_steps back into the file as the model marks progress,
+	// so a future session can resume from the disk state even if the session
+	// entry is gone.
+	let activePlanPath: string | null = null;
+
+	const writebackProgress = (status?: PlanStatus) => {
+		if (!activePlanPath) return;
+		const done = todoItems.filter((t) => t.completed).map((t) => t.step);
+		updatePlanFile(activePlanPath, { done_steps: done, status });
+	};
 
 	pi.registerFlag("plan", { type: "boolean", description: "Start in plan mode", default: false });
 
@@ -203,8 +287,15 @@ export default function (pi: ExtensionAPI) {
 	};
 
 	const finalizePlan = (ctx: ExtensionContext) => {
+		// Determine terminal status before we drop todos so the file reflects
+		// whether the plan completed naturally or was closed early.
+		const terminal: PlanStatus = todoItems.length > 0 && todoItems.every((t) => t.completed)
+			? "completed"
+			: "closed";
+		writebackProgress(terminal);
 		executionMode = false;
 		todoItems = [];
+		activePlanPath = null;
 		pi.setActiveTools(NORMAL_MODE_TOOLS);
 		updateStatus(ctx);
 		persist();
@@ -251,6 +342,67 @@ export default function (pi: ExtensionAPI) {
 			const done = todoItems.filter((t) => t.completed).length;
 			finalizePlan(ctx);
 			ctx.ui.notify(`Plan closed manually (${done}/${total} steps marked done).`, "info");
+		},
+	});
+
+	pi.registerCommand("plan-resume", {
+		description: "Resume a saved plan from <cwd>/.pi/plans. No args → picker; arg → filename substring match.",
+		handler: async (args, ctx) => {
+			const cfg = loadOpusPackSection("planMode", DEFAULT_PLAN_CFG);
+			const all = listPlanFiles(ctx.cwd, cfg.dir);
+			if (all.length === 0) {
+				ctx.ui.notify(`No plans in ${join(ctx.cwd, cfg.dir)}. Create one via /plan → exit_plan_mode(plan, save: "...").`, "info");
+				return;
+			}
+			const query = (args ?? "").trim();
+			let picked: PlanFileInfo | undefined;
+			if (query) {
+				picked = all.find((p) => p.slug.toLowerCase().includes(query.toLowerCase()));
+				if (!picked) {
+					ctx.ui.notify(`No plan matching "${query}". Try /plan-resume without args to pick from the list.`, "warning");
+					return;
+				}
+			} else if (!ctx.hasUI) {
+				ctx.ui.notify("plan-resume requires an arg in non-interactive mode.", "warning");
+				return;
+			} else {
+				const options = all.slice(0, 20).map((p) => {
+					const progress = p.doneSteps.length > 0 ? ` [${p.doneSteps.length} done]` : "";
+					return `${p.slug}  ·  ${p.status}${progress}`;
+				});
+				options.push("❌ Cancel");
+				const choice = await ctx.ui.select("Pick a plan to resume:", options);
+				if (!choice || choice === "❌ Cancel") return;
+				picked = all[options.indexOf(choice)];
+			}
+			if (!picked) return;
+
+			let raw: string;
+			try { raw = readFileSync(picked.path, "utf8"); } catch (e) {
+				ctx.ui.notify(`Can't read ${picked.path}: ${(e as Error).message}`, "error");
+				return;
+			}
+			const { body } = parseFrontmatter<PlanFrontmatter>(raw);
+			const extracted = extractTodoItems(body.startsWith("Plan:") ? body : `Plan:\n${body}`);
+			if (extracted.length === 0) {
+				ctx.ui.notify(`Plan ${picked.slug} has no numbered steps to resume.`, "warning");
+				return;
+			}
+			const doneSet = new Set(picked.doneSteps);
+			for (const t of extracted) if (doneSet.has(t.step)) t.completed = true;
+
+			planModeEnabled = false;
+			executionMode = true;
+			todoItems = extracted;
+			activePlanPath = picked.path;
+			pi.setActiveTools(NORMAL_MODE_TOOLS);
+			updateStatus(ctx);
+			persist();
+			const done = todoItems.filter((t) => t.completed).length;
+			ctx.ui.notify(
+				`Resumed plan ${picked.slug} (${done}/${todoItems.length} steps marked done). Continue execution; use [DONE:N] markers for remaining steps.`,
+				"info",
+			);
 		},
 	});
 
@@ -306,7 +458,10 @@ export default function (pi: ExtensionAPI) {
 				let savedPathNI: string | undefined;
 				if (wantSave || cfg.autoSave) {
 					const res = savePlanToFile(ctx.cwd, cfg.dir, params.plan, "non-interactive", todoItems[0]?.text ?? "plan", params.save);
-					if ("path" in res) savedPathNI = res.path;
+					if ("path" in res) {
+						savedPathNI = res.path;
+						activePlanPath = res.path;
+					}
 				}
 				return {
 					content: [{ type: "text", text: `plan accepted (non-interactive). ${todoItems.length} steps. execute now.${savedPathNI ? ` saved: ${savedPathNI}` : ""}` }],
@@ -339,6 +494,7 @@ export default function (pi: ExtensionAPI) {
 				const res = savePlanToFile(ctx.cwd, cfg.dir, params.plan, "approved", todoItems[0]?.text ?? "plan", params.save);
 				if ("path" in res) {
 					savedPath = res.path;
+					activePlanPath = res.path;
 					ctx.ui.notify(`plan saved: ${res.path}`, "info");
 				} else {
 					ctx.ui.notify(`plan save failed: ${res.error}`, "warning");
@@ -405,12 +561,18 @@ Create a numbered plan under a "Plan:" header. Do NOT make changes.`,
 		if (!executionMode || todoItems.length === 0) return;
 		if (!isAssistantMessage(event.message)) return;
 		const doneSteps = extractDoneSteps(getTextContent(event.message));
+		if (doneSteps.length === 0) return;
+		let changed = false;
 		for (const s of doneSteps) {
 			const item = todoItems.find((t) => t.step === s);
-			if (item) item.completed = true;
+			if (item && !item.completed) { item.completed = true; changed = true; }
 		}
 		updateStatus(ctx);
 		persist();
+		// Only touch the plan file when something actually advanced — avoid
+		// rewriting the file on every turn that happens to re-emit an old
+		// [DONE:N] marker.
+		if (changed) writebackProgress();
 	});
 
 	pi.on("agent_end", async (event, ctx) => {
