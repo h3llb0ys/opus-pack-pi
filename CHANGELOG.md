@@ -1,51 +1,57 @@
 # Changelog
 
-Формат — обратный хронологический. Версии = git-теги.
+Reverse-chronological. Versions track git tags. Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
-## Unreleased
+## [Unreleased]
 
-### Provider-neutrality
-- Пакет теперь провайдер-нейтрален. Документация и дефолты больше не предполагают Anthropic.
-- `opus-pack.subagent.modelAlias` (`fast`/`balanced`/`slow`) — one-shot-смена провайдера без правки frontmatter'ов агентов.
-- `model-router.levels` в `settings.json.example` — пустой по умолчанию; `_levels_example_{anthropic,openai,ollama}` как placeholder-блоки.
-- `claude-md-loader` сканит `~/.{claude,codex,gemini,pi}/` (не только `~/.claude/`).
-- `skills.ts` — 4 корня (`.claude`, `.codex`, `.gemini`, `.pi`).
-- `safe-deny` защищает `~/.codex`, `~/.gemini`, `~/.openai`, `~/.anthropic` вдобавок к `~/.claude`.
-- `model-router.parseRetryAfter` понимает OpenAI-стиль `retry-after-ms`, `x-ratelimit-reset-{requests,tokens}[-ms]`.
-- `cost.ts` показывает `—` вместо `$0.00` когда pricing отсутствует.
-- `status.ts` footer slot `90-opus` → `90-pack`.
-- `claude-total-memory` полностью выпилен — подключай свой MCP через `~/.pi/agent/mcp.json`.
-- `meridian` (Claude Max proxy) переведён в opt-in через `ANTHROPIC=1` при запуске `install.sh`.
+### Added
 
-### New features
-- **`/plan-resume`** + progress writeback. План пишется в `.pi/plans/<ts>-<slug>.md` с frontmatter `{created, status, done_steps}`. На `turn_end` новые `[DONE:N]` маркеры пишутся обратно в файл. `/plan-resume` без аргумента показывает picker, с аргументом — substring match по имени. Финализация выставляет status `completed`/`closed`.
-- **`/plan-close`** — ручной escape hatch когда модель забыла `[DONE:N]` на последнем шаге.
-- **`/extensions`** — health-dashboard: OPUS_EXTENSIONS с enabled/disabled state по категориям + aggregate counters.
-- **file-based slash commands** (`extensions/file-commands.ts`): сканит 4 корня (`~/.{pi,claude}/commands` + `<cwd>/.{pi,claude}/commands`), frontmatter + body → `pi.sendUserMessage`, `$ARGS`/`$1..$9`, subdirs → `plugin:name` namespace.
-- **deferred tool schemas** (`extensions/deferred-tools.ts`, feature-flagged): `tool_search` + `tool_load` прячут MCP tools до explicit load'а.
-- **log-tail watch-mode**: `log_tail({watch: true})` пушит новые строки как hidden context-message на каждом turn.
-- **subagent file-persist** (`.pi/agents/<runId>.jsonl`) + `continue_from` param — compressed summary previous run'а prepend'ится в system prompt.
-- **statusline shell-command**: `opus-pack.statusLine.command` → stdout в slot `85-shell`.
-- **Multi-layer permissions merge**: `~/.pi/agent/settings.json` + `.local.json` + `<cwd>/.pi/settings.json` + `.local.json` (CC user/project/local tiers).
-- **Bundled agent profiles** теперь реально грузятся (были в репо, но `discoverAgents` их игнорил). Priority: `bundled < user < project`.
-- **diff-preview для write** — реальный line-diff между диском и новым content'ом с ±2 строк контекста.
-- **line numbers в edit preview** — `indexOf(oldText)` даёт approximate line.
-- **iteration-guard** — `defaultCap` / `extendBy` в `opus-pack.iterationGuard`.
+- **Provider-neutrality.** The pack no longer assumes Anthropic.
+  - `opus-pack.subagent.modelAlias` (`fast` / `balanced` / `slow`) swaps providers with a single settings change instead of editing every agent frontmatter.
+  - `model-router.levels` ships empty by default. `_levels_example_{anthropic,openai,ollama}` stubs live alongside for copy-paste.
+  - `claude-md-loader` also scans `~/.codex`, `~/.gemini`, `~/.pi` in addition to `~/.claude`.
+  - `skills.ts` registers four roots: `~/.{claude,codex,gemini,pi}/skills`.
+  - `safe-deny` now also protects `~/.codex`, `~/.gemini`, `~/.openai`, `~/.anthropic`.
+  - `model-router.parseRetryAfter` handles OpenAI-style `retry-after-ms` and `x-ratelimit-reset-{requests,tokens}[-ms]` headers.
+  - `cost.ts` shows `—` instead of `$0.00` when pricing is unknown.
+  - `status.ts` footer slot renamed `90-opus` → `90-pack`.
+  - `claude-total-memory` references removed. Bring your own MCP via `~/.pi/agent/mcp.json`.
+  - `meridian` (Claude-Max proxy) moved behind `ANTHROPIC=1 ./install.sh`.
+- **`/plan-resume`** — reload a saved plan from `.pi/plans/*.md` across sessions. Picker when called without args, substring match with args.
+- **Plan progress writeback.** `turn_end` writes `done_steps` back into the plan file's frontmatter as `[DONE:N]` markers land. `finalizePlan` flips `status` to `completed` or `closed`.
+- **`/plan-close`** — manual escape hatch when the model forgets `[DONE:N]` on the last step.
+- **`/extensions` health dashboard.** Replaces the previous flat list. Shows every pack extension grouped by category with enabled/disabled state plus aggregate slash-command and tool counters.
+- **`file-commands.ts`** — file-based slash commands with YAML frontmatter. Scans `~/.{pi,claude}/commands` + `<cwd>/.{pi,claude}/commands`. Subdirectories become `plugin:name` namespaces. `$ARGS` and `$1..$9` substitution. Drops in CC-format commands unmodified.
+- **`deferred-tools.ts`** — feature-flagged MCP tool hiding. `tool_search` + `tool_load` proxies expose MCP tools on demand, keeping the prompt small when the MCP park is large.
+- **`log-tail` watch mode.** `log_tail({watch: true})` subscribes a path; new lines arrive as a hidden context-message on every turn without polling.
+- **Subagent jsonl persistence.** Every `runSingleAgent` invocation writes message events to `.pi/agents/<runId>.jsonl`. New `continue_from` parameter loads the previous run, compresses it into a summary, and prepends to the agent's system prompt for cross-run continuity.
+- **Statusline shell command.** `opus-pack.statusLine.command` runs a user-defined shell script; its first stdout line lands in slot `85-shell`.
+- **Multi-layer permissions merge.** Permissions now composite four layers in precedence order: `<cwd>/.pi/settings.local.json`, `<cwd>/.pi/settings.json`, `~/.pi/agent/settings.local.json`, `~/.pi/agent/settings.json`.
+- **Bundled agents actually load.** `discoverAgents` previously only scanned `~/.pi/agent/agents/`; the pack's own profiles in `agents/` and `extensions/subagent/agents/` were invisible. Fixed by adding a `bundled` layer that resolves relative to `import.meta.url`. Priority: `bundled < user < project`.
+- **Real diff-preview for `write`.** `permissions.ts` reads the on-disk file, computes a line diff, and renders unified hunks with ±2 lines of context instead of showing only the first few lines of the new content.
+- **Line numbers in `edit` previews.** `indexOf(oldText)` supplies an approximate line number in each hunk header.
+- **`iteration-guard` config.** `opus-pack.iterationGuard.{defaultCap, extendBy}` replaces the hard-coded `40` / `+20`.
 
-### Fixes / security
-- **subagent `continue_from` path traversal** — `runId` валидируется против `^[\w.-]+$`.
-- **deferred-tools** turn-semantics — `loadedThisTurn` flag, двухфазный clear чтобы loaded tools доживали до следующего turn'а.
-- **file-commands** — `lstatSync` вместо `statSync` + `MAX_WALK_DEPTH` cap защищают от symlink cycles.
-- **subagent.makeRunId** — `crypto.randomBytes(3)` hex вместо `Math.random()` (anti-collision при параллельных spawn'ах).
-- **log-tail.readNewBytes** — trim буфера до последнего `\n` чтобы строки не резались пополам между push'ами.
-- **plan-mode** — defensive clear в `before_agent_start` если все `todos.every(completed)` но `agent_end` не успел почистить.
-- **install.sh** — deep-merge `opus-pack` блока через jq `*`, пользовательские customisation'ы выживают `update.sh`. Arrays (rules, compactHints) пустые в example, дефолты как `_example_*` для copy-paste.
+### Fixed
 
-### Misc
-- `.gitignore` (node_modules, dist, .pi, .DS_Store, *.log).
-- `package.json` — `engines.node >=18`, peerDeps пинятся к `>=0.67` для pi.
-- README — provider-setup quick-start, clone-path generic (не `~/extra/opus-pack-pi`).
+- **Subagent `continue_from` path traversal.** The `runId` is now validated against `^[\w.-]+$` before being interpolated into a filesystem path.
+- **Deferred-tools turn semantics.** Previous `turn_end` cleared `tempVisible` before the next provider request could see loaded tools, defeating the whole purpose of `tool_load`. A `loadedThisTurn` flag now keeps tools visible for one additional turn.
+- **Deferred-tools mid-session toggle.** Turning the extension off mid-session now restores the full tool list instead of leaving MCP tools silently hidden until `/reload`.
+- **Subagent `runId` collisions.** `crypto.randomBytes(3)` replaces `Math.random().toString(36).slice(2, 5)`, lifting the collision space from ~46k to ~16M per second bucket.
+- **Log-tail line splitting.** `readNewBytes` trims the read buffer back to the last newline when truncated, so a line split across two pushes arrives whole on the second push.
+- **File-commands symlink safety.** `lstatSync` + `MAX_WALK_DEPTH` prevent infinite recursion on symlink loops (`.claude/commands/loop → ..`).
+- **Plan-mode stale checklist.** On the next user prompt after a plan completes, the widget and status slot now clear even if `agent_end` missed the `every(completed)` check.
+- **`install.sh` deep-merge.** The `opus-pack` block is deep-merged via `jq *` instead of being overwritten. User-added permissions rules and `subagent.modelAlias` entries survive `./update.sh`.
 
-## v0.6 и ранее
+### Changed
 
-См. git-историю — `git log --oneline vX.Y..HEAD`.
+- **Empty arrays in `settings.json.example`.** `rules`, `compactHints`, `modelRouter.rules` ship empty. Defaults live in `_example_*` sibling blocks because `jq *` replaces arrays rather than appending, and we'd rather not clobber user changes on update.
+- **Node ≥18.** `engines.node` pins the minimum. Peer dependencies `@mariozechner/pi-{ai,coding-agent}` pin to `>=0.67` to avoid silent breakage on core rewrites.
+
+### Removed
+
+- **`claude-total-memory` references.** The MCP server belongs to the user's global config, not to this pack.
+
+## Historical tags (v0.1 – v0.6)
+
+See `git log --oneline`. These tags predate the provider-neutrality work and assume an Anthropic-only setup.
