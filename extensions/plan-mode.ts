@@ -262,6 +262,8 @@ export default function (pi: ExtensionAPI) {
 			})),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const cfg = loadOpusPackSection("planMode", DEFAULT_PLAN_CFG);
+			const wantSave = typeof params.save === "string" && params.save.trim().length > 0;
 			if (!planModeEnabled) {
 				return {
 					content: [{ type: "text", text: "refused: not currently in plan mode" }],
@@ -279,8 +281,13 @@ export default function (pi: ExtensionAPI) {
 				pi.setActiveTools(NORMAL_MODE_TOOLS);
 				updateStatus(ctx);
 				persist();
+				let savedPathNI: string | undefined;
+				if (wantSave || cfg.autoSave) {
+					const res = savePlanToFile(ctx.cwd, cfg.dir, params.plan, "non-interactive", todoItems[0]?.text ?? "plan", params.save);
+					if ("path" in res) savedPathNI = res.path;
+				}
 				return {
-					content: [{ type: "text", text: `plan accepted (non-interactive). ${todoItems.length} steps. execute now.` }],
+					content: [{ type: "text", text: `plan accepted (non-interactive). ${todoItems.length} steps. execute now.${savedPathNI ? ` saved: ${savedPathNI}` : ""}` }],
 					isError: false,
 					details: { approved: true, steps: todoItems.length },
 				};
@@ -291,6 +298,9 @@ export default function (pi: ExtensionAPI) {
 				`${todoItems.length} step${todoItems.length === 1 ? "" : "s"} queued.`,
 			);
 			if (!approved) {
+				if (wantSave || cfg.autoSave) {
+					savePlanToFile(ctx.cwd, cfg.dir, params.plan, "rejected", todoItems[0]?.text ?? "plan", params.save);
+				}
 				return {
 					content: [{ type: "text", text: "user declined execution. stay in plan mode." }],
 					isError: false,
@@ -302,8 +312,18 @@ export default function (pi: ExtensionAPI) {
 			pi.setActiveTools(NORMAL_MODE_TOOLS);
 			updateStatus(ctx);
 			persist();
+			let savedPath: string | undefined;
+			if (wantSave || cfg.autoSave) {
+				const res = savePlanToFile(ctx.cwd, cfg.dir, params.plan, "approved", todoItems[0]?.text ?? "plan", params.save);
+				if ("path" in res) {
+					savedPath = res.path;
+					ctx.ui.notify(`plan saved: ${res.path}`, "info");
+				} else {
+					ctx.ui.notify(`plan save failed: ${res.error}`, "warning");
+				}
+			}
 			return {
-				content: [{ type: "text", text: `plan approved. proceed with step 1. mark progress with [DONE:n] markers.` }],
+				content: [{ type: "text", text: `plan approved. proceed with step 1. mark progress with [DONE:n] markers.${savedPath ? ` saved: ${savedPath}` : ""}` }],
 				isError: false,
 				details: { approved: true, steps: todoItems.length },
 			};
