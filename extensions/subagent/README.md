@@ -99,7 +99,7 @@ Use a chain: first have scout find the read tool, then have planner suggest impr
 ## Output Display
 
 **Collapsed view** (default):
-- Status icon (✓/✗/⏳) and agent name
+- Status icon (✓/✗/…) and agent name
 - Last 5-10 items (tool calls and text)
 - Usage stats: `3 turns ↑input ↓output RcacheRead WcacheWrite $cost ctx:contextTokens model`
 
@@ -110,7 +110,7 @@ Use a chain: first have scout find the read tool, then have planner suggest impr
 - Per-task usage (for chain/parallel)
 
 **Parallel mode streaming**:
-- Shows all tasks with live status (⏳ running, ✓ done, ✗ failed)
+- Shows all tasks with live status (running, ✓ done, ✗ failed)
 - Updates as each task makes progress
 - Shows "2/3 done, 1 running" status
 

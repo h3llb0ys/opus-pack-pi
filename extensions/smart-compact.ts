@@ -135,7 +135,7 @@ export default function (pi: ExtensionAPI) {
 	// lands in the compaction prompt.
 	pi.on("session_before_compact", async (event, ctx) => {
 		compactStartTime = Date.now();
-		ctx.ui.setStatus("04-compact", ctx.ui.theme.fg("warning", "⏳ compacting..."));
+		ctx.ui.setStatus("04-compact", ctx.ui.theme.fg("warning", "compacting..."));
 
 		const configured = loadHints(ctx.cwd);
 		const advisor = formatAdvisor(edits, errors);

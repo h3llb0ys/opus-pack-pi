@@ -150,25 +150,25 @@ export default function (pi: ExtensionAPI) {
 
 			while (true) {
 				const options = filtered.slice(0, 20).map((r) => `${r.full_name}  ★${r.stargazers_count}  [${fmtAge(r.updated_at)}]  ${r.description ?? ""}`.slice(0, 160));
-				options.push("❌ Done");
+				options.push("Done");
 				const picked = await ctx.ui.select("Community pi extensions:", options);
-				if (!picked || picked === "❌ Done") return;
+				if (!picked || picked === "Done") return;
 				const idx = options.indexOf(picked);
 				const repo = filtered[idx];
 
 				const actions = [
-					"📦 Install",
-					"🔗 Open on GitHub",
-					"⬅️  Back",
+					"Install",
+					"Open on GitHub",
+					"Back",
 				];
 				const action = await ctx.ui.select(`${repo.full_name} — action:`, actions);
-				if (!action || action.startsWith("⬅️")) continue;
-				if (action.startsWith("🔗")) {
+				if (!action || action === "Back") continue;
+				if (action === "Open on GitHub") {
 					const opener = process.platform === "darwin" ? "open" : "xdg-open";
 					await pi.exec(opener, [repo.html_url], {});
 					continue;
 				}
-				if (action.startsWith("📦")) {
+				if (action === "Install") {
 					if (!(await confirmSuspicious(ctx, repo))) {
 						ctx.ui.notify("install cancelled", "info");
 						continue;

@@ -154,7 +154,7 @@ export default function (pi: ExtensionAPI) {
 			pi.sendMessage(
 				{
 					customType: "todo-nag",
-					content: "⚠️ You started modifying code without a plan. Call `todo add` for each step, then `todo start` → work → `todo done`.",
+					content: "⚠ You started modifying code without a plan. Call `todo add` for each step, then `todo start` → work → `todo done`.",
 					display: true,
 				},
 				{ deliverAs: "steer" },
@@ -172,7 +172,7 @@ export default function (pi: ExtensionAPI) {
 				pi.sendMessage(
 					{
 						customType: "todo-nag",
-						content: "⚠️ You are writing code but no task is in_progress. Call `todo start <id>` on the current step.",
+						content: "⚠ You are writing code but no task is in_progress. Call `todo start <id>` on the current step.",
 						display: true,
 					},
 					{ deliverAs: "steer" },

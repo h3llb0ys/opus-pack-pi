@@ -98,7 +98,7 @@ const formatSummary = (stat: ToolStat): string | null => {
 
 	if (stat.editFiles.size > 0 || stat.writeFiles.size > 0) {
 		const allChanged = [...new Set([...stat.editFiles, ...stat.writeFiles])];
-		lines.push(`📝 Modified: ${allChanged.length} file${allChanged.length > 1 ? "s" : ""}`);
+		lines.push(`Modified: ${allChanged.length} file${allChanged.length > 1 ? "s" : ""}`);
 		for (const f of allChanged.slice(0, 8)) {
 			const short = f.split("/").pop() ?? f;
 			lines.push(`   ${short}`);
@@ -106,9 +106,9 @@ const formatSummary = (stat: ToolStat): string | null => {
 		if (allChanged.length > 8) lines.push(`   ... +${allChanged.length - 8} more`);
 	}
 
-	if (stat.reads > 0) lines.push(`📖 Read: ${stat.reads} file${stat.reads > 1 ? "s" : ""} (${stat.readFiles.size} unique)`);
-	if (stat.bashes > 0) lines.push(`⚡ Bash: ${stat.bashes} command${stat.bashes > 1 ? "s" : ""}`);
-	if (stat.errors > 0) lines.push(`❌ Errors: ${stat.errors}`);
+	if (stat.reads > 0) lines.push(`Read: ${stat.reads} file${stat.reads > 1 ? "s" : ""} (${stat.readFiles.size} unique)`);
+	if (stat.bashes > 0) lines.push(`Bash: ${stat.bashes} command${stat.bashes > 1 ? "s" : ""}`);
+	if (stat.errors > 0) lines.push(`Errors: ${stat.errors}`);
 
 	return lines.join("\n");
 };

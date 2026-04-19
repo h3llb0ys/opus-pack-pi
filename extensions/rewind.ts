@@ -39,30 +39,30 @@ export default function (pi: ExtensionAPI) {
 			const options: string[] = [];
 
 			if (hasChanges) {
-				options.push("🔙 Discard ALL uncommitted changes (git checkout + clean)");
-				options.push("📦 Stash uncommitted changes (git stash)");
+				options.push("Discard ALL uncommitted changes (git checkout + clean)");
+				options.push("Stash uncommitted changes (git stash)");
 			}
 
 			// Last commit revert
-			options.push(`↩️ Undo last commit: "${lastCommitMsg.stdout.trim().slice(0, 60)}" (soft reset)`);
+			options.push(`Undo last commit: "${lastCommitMsg.stdout.trim().slice(0, 60)}" (soft reset)`);
 
 			// Recent commits picker
-			options.push("📜 Pick from recent commits to reset to");
+			options.push("Pick from recent commits to reset to");
 
 			// Stash list
 			const stashList = await pi.exec("git", ["stash", "list"], { cwd: ctx.cwd });
 			if (stashList.stdout.trim()) {
-				options.push("📋 Pick from stash entries");
+				options.push("Pick from stash entries");
 			}
 
-			options.push("❌ Cancel");
+			options.push("Cancel");
 
 			const choice = await ctx.ui.select("/rewind — choose action:", options);
-			if (!choice || choice === "❌ Cancel") return;
+			if (!choice || choice === "Cancel") return;
 
-			if (choice.startsWith("🔙 Discard")) {
+			if (choice.startsWith("Discard")) {
 				const confirmed = await ctx.ui.confirm(
-					"⚠️ This will DESTROY all uncommitted changes!",
+					"⚠ This will DESTROY all uncommitted changes!",
 					"Files will be reverted to HEAD. This cannot be undone.",
 				);
 				if (!confirmed) { ctx.ui.notify("Cancelled.", "info"); return; }
@@ -73,13 +73,13 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
-			if (choice.startsWith("📦 Stash")) {
+			if (choice.startsWith("Stash")) {
 				await pi.exec("git", ["stash", "push", "-m", `rewind-stash-${Date.now()}`], { cwd: ctx.cwd });
 				ctx.ui.notify("✓ Changes stashed. Use /diff to see stash or `git stash pop` to restore.", "info");
 				return;
 			}
 
-			if (choice.startsWith("↩️ Undo last commit")) {
+			if (choice.startsWith("Undo last commit")) {
 				const confirmed = await ctx.ui.confirm(
 					"Soft reset last commit?",
 					"Commit will be undone but files keep their changes (staged).",
@@ -91,7 +91,7 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
-			if (choice.startsWith("📜 Pick from recent commits")) {
+			if (choice.startsWith("Pick from recent commits")) {
 				const log = await pi.exec("git", [
 					"log", "--oneline", "-20", "--format=%h %s",
 				], { cwd: ctx.cwd });
@@ -101,17 +101,17 @@ export default function (pi: ExtensionAPI) {
 					return;
 				}
 
-				const commitChoice = await ctx.ui.select("Reset to commit:", [...commits, "❌ Cancel"]);
-				if (!commitChoice || commitChoice === "❌ Cancel") return;
+				const commitChoice = await ctx.ui.select("Reset to commit:", [...commits, "Cancel"]);
+				if (!commitChoice || commitChoice === "Cancel") return;
 
 				const hash = commitChoice.split(" ")[0];
 				const mode = await ctx.ui.select("Reset mode:", [
 					"Soft (keep changes staged)",
 					"Mixed (keep changes unstaged)",
 					"Hard (DISCARD all changes after this commit)",
-					"❌ Cancel",
+					"Cancel",
 				]);
-				if (!mode || mode === "❌ Cancel") return;
+				if (!mode || mode === "Cancel") return;
 
 				const modeFlag = mode.startsWith("Soft") ? "--soft"
 					: mode.startsWith("Mixed") ? "--mixed"
@@ -119,7 +119,7 @@ export default function (pi: ExtensionAPI) {
 
 				if (modeFlag === "--hard") {
 					const confirmed = await ctx.ui.confirm(
-						"⚠️ HARD RESET — all changes after this commit will be DESTROYED!",
+						"⚠ HARD RESET — all changes after this commit will be DESTROYED!",
 						`Reset to ${commitChoice}`,
 					);
 					if (!confirmed) { ctx.ui.notify("Cancelled.", "info"); return; }
@@ -130,10 +130,10 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
-			if (choice.startsWith("📋 Pick from stash")) {
+			if (choice.startsWith("Pick from stash")) {
 				const entries = stashList.stdout.trim().split("\n").filter(Boolean);
-				const stashChoice = await ctx.ui.select("Apply stash:", [...entries, "❌ Cancel"]);
-				if (!stashChoice || stashChoice === "❌ Cancel") return;
+				const stashChoice = await ctx.ui.select("Apply stash:", [...entries, "Cancel"]);
+				if (!stashChoice || stashChoice === "Cancel") return;
 
 				const stashRef = stashChoice.split(":")[0];
 				await pi.exec("git", ["stash", "apply", stashRef], { cwd: ctx.cwd });

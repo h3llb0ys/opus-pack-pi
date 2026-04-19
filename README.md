@@ -4,7 +4,7 @@ Opinionated, provider-neutral extension bundle for [pi-coding-agent](https://git
 
 The installer also pulls selected community packages through native `pi install` and fills in gaps they don't cover.
 
-👉 [Русская версия (Russian README)](./README.ru.md)
+[Русская версия (Russian README)](./README.ru.md)
 
 ## Features
 

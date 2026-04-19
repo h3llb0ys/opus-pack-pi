@@ -263,10 +263,10 @@ export default function (pi: ExtensionAPI) {
 		broadcastPlanState();
 		if (executionMode && todoItems.length > 0) {
 			const done = todoItems.filter((t) => t.completed).length;
-			ctx.ui.setStatus("01-plan", ctx.ui.theme.fg("accent", `📋 ${done}/${todoItems.length}`));
+			ctx.ui.setStatus("01-plan", ctx.ui.theme.fg("accent", `${done}/${todoItems.length}`));
 		} else if (planModeEnabled) {
 			// CC-style: accent-coloured pause + label + shortcut hint.
-			const label = ctx.ui.theme.fg("accent", "⏸ plan mode on") + " " + ctx.ui.theme.fg("muted", "(cmd+p)");
+			const label = ctx.ui.theme.fg("accent", "plan mode on") + " " + ctx.ui.theme.fg("muted", "(cmd+p)");
 			ctx.ui.setStatus("01-plan", label);
 		} else {
 			ctx.ui.setStatus("01-plan", undefined);
@@ -370,9 +370,9 @@ export default function (pi: ExtensionAPI) {
 					const progress = p.doneSteps.length > 0 ? ` [${p.doneSteps.length} done]` : "";
 					return `${p.slug}  ·  ${p.status}${progress}`;
 				});
-				options.push("❌ Cancel");
+				options.push("Cancel");
 				const choice = await ctx.ui.select("Pick a plan to resume:", options);
-				if (!choice || choice === "❌ Cancel") return;
+				if (!choice || choice === "Cancel") return;
 				picked = all[options.indexOf(choice)];
 			}
 			if (!picked) return;

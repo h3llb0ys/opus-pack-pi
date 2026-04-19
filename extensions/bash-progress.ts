@@ -139,6 +139,6 @@ export default function (pi: ExtensionAPI) {
 		const tail = truncateTail(run.lastText, cfg.tailLines).trimEnd();
 		const widgetLines = tail ? [head, ...tail.split("\n").slice(-cfg.tailLines)] : [head];
 		ctx.ui.setWidget("bash-progress", widgetLines.map((l) => ctx.ui.theme.fg("dim", l)));
-		ctx.ui.setStatus("05-bash", ctx.ui.theme.fg("warning", `⏳ ${fmtElapsed(elapsed)}`));
+		ctx.ui.setStatus("05-bash", ctx.ui.theme.fg("warning", `${fmtElapsed(elapsed)}`));
 	};
 }

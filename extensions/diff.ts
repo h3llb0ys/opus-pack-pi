@@ -62,16 +62,16 @@ export default function (pi: ExtensionAPI) {
 async function pickAndShow(pi: ExtensionAPI, ctx: ExtensionContext, files: string[], diffTarget: string) {
 	// Add "all" and "done" options
 	const options = [
-		"📊 All files (combined)",
+		"[all] All files (combined)",
 		...files,
-		"❌ Done",
+		"Done",
 	];
 
 	while (true) {
 		const choice = await ctx.ui.select("Pick file to diff (or All):", options);
-		if (!choice || choice === "❌ Done") return;
+		if (!choice || choice === "Done") return;
 
-		if (choice === "📊 All files (combined)") {
+		if (choice === "[all] All files (combined)") {
 			const diff = await pi.exec("git", ["diff", diffTarget], { cwd: ctx.cwd });
 			const truncated = truncateHead(diff.stdout || "(empty diff)", {
 				maxLines: DEFAULT_MAX_LINES,

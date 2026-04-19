@@ -423,21 +423,21 @@ export default function (pi: ExtensionAPI) {
 					const state = e.alive ? `alive pid=${e.pid} up=${fmtUptime(e.uptimeSec)}` : "[dead]";
 					return `${e.slug}  ${state}  log=${fmtBytes(e.logBytes)}`;
 				});
-				options.push("❌ Done");
+				options.push("Done");
 				const choice = await ctx.ui.select("Background tasks (pick one):", options);
-				if (!choice || choice === "❌ Done") return;
+				if (!choice || choice === "Done") return;
 				const idx = options.indexOf(choice);
 				const entry = fresh[idx];
 
 				const actions = [
-					"📄 Tail log (last 200 lines)",
-					entry.alive ? "🛑 Kill (TERM)" : "🗑️  Remove stale pidfile",
-					"⬅️  Back",
+					"[tail] Tail log (last 200 lines)",
+					entry.alive ? "[kill] Kill (TERM)" : "[rm] Remove stale pidfile",
+					"[back] Back",
 				];
 				const action = await ctx.ui.select(`${entry.slug} — action:`, actions);
-				if (!action || action === "⬅️  Back") continue;
+				if (!action || action === "[back] Back") continue;
 
-				if (action.startsWith("📄")) {
+				if (action.startsWith("[tail]")) {
 					if (!existsSync(entry.logPath)) {
 						ctx.ui.notify(`log not found: ${entry.logPath}`, "warning");
 						continue;
@@ -446,14 +446,14 @@ export default function (pi: ExtensionAPI) {
 					ctx.ui.notify(`── ${basename(entry.logPath)} ──\n${text || "(empty)"}`, "info");
 					continue;
 				}
-				if (action.startsWith("🛑")) {
+				if (action.startsWith("[kill]")) {
 					if (entry.pid !== null) {
 						const res = await pi.exec("kill", ["-TERM", String(entry.pid)], {});
 						ctx.ui.notify(res.code === 0 ? `killed ${entry.pid}` : `kill failed: ${res.stderr.trim() || res.code}`, res.code === 0 ? "info" : "error");
 					}
 					continue;
 				}
-				if (action.startsWith("🗑️")) {
+				if (action.startsWith("[rm]")) {
 					try {
 						unlinkSync(entry.pidPath);
 						ctx.ui.notify(`removed ${entry.pidPath}`, "info");

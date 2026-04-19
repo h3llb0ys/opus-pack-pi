@@ -161,7 +161,7 @@ export default function (pi: ExtensionAPI) {
 		if (event.source === "cycle") {
 			// User used /model cycle — pause router so we don't fight them.
 			pausedByUser = true;
-			setStatus(ctx, ctx.ui.theme.fg("warning", "⏸ router (user override)"));
+			setStatus(ctx, ctx.ui.theme.fg("warning", "router (user override)"));
 		}
 	});
 
@@ -254,7 +254,7 @@ export default function (pi: ExtensionAPI) {
 		lastLevel = level;
 
 		const short = shortModelName(model);
-		const clock = matchedRule === "override" ? " ⏱" : "";
+		const clock = matchedRule === "override" ? " [once]" : "";
 		setStatus(ctx, ctx.ui.theme.fg("accent", `↗ ${short}·${lvlCfg.thinking}${clock}`));
 
 		pushLog({
@@ -343,7 +343,7 @@ export default function (pi: ExtensionAPI) {
 			}
 			if (arg === "off" || arg === "pause") {
 				pausedByUser = true;
-				setStatus(ctx, ctx.ui.theme.fg("warning", "⏸ router"));
+				setStatus(ctx, ctx.ui.theme.fg("warning", "router"));
 				ctx.ui.notify("router: paused for this session", "info");
 				return;
 			}
