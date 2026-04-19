@@ -140,7 +140,6 @@ export default function (pi: ExtensionAPI) {
 	// there until the retry-after window passes. Reset to normal routing on
 	// expiry.
 	let downgradeUntilMs = 0;
-	let downgradeOriginalLevel: string | null = null;
 	let downgradeNoticeShown = false;
 
 	const pushLog = (d: Decision) => {
@@ -188,7 +187,6 @@ export default function (pi: ExtensionAPI) {
 		if (cfg.rateLimitDowngrade && downgradeUntilMs > 0) {
 			if (Date.now() >= downgradeUntilMs) {
 				downgradeUntilMs = 0;
-				downgradeOriginalLevel = null;
 				downgradeNoticeShown = false;
 				ctx.ui.notify(`router: rate-limit window expired, resuming normal routing`, "info");
 			} else {
@@ -282,7 +280,6 @@ export default function (pi: ExtensionAPI) {
 		if (!cfg.rateLimitDowngrade) return;
 		const waitMs = parseRetryAfter(event.headers, 30);
 		downgradeUntilMs = Math.max(downgradeUntilMs, Date.now() + waitMs);
-		if (!downgradeOriginalLevel) downgradeOriginalLevel = lastLevel;
 		if (!downgradeNoticeShown) {
 			const ordered = Object.keys(cfg.levels);
 			const fromLevel = lastLevel ?? cfg.default;

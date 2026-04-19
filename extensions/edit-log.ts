@@ -18,6 +18,7 @@ interface LogEntry {
 }
 
 const MAX_SNIPPET_CHARS = 120;
+const MAX_FILES = 200;
 
 const fmtAgo = (ts: number): string => {
 	const diff = Date.now() - ts;
@@ -63,8 +64,20 @@ export default function (pi: ExtensionAPI) {
 	if (isExtensionDisabled("edit-log")) return;
 
 	// filepath → latest entry for that path. Multiple edits collapse to the
-	// most recent + a counter.
+	// most recent + a counter. Capped at MAX_FILES — oldest entries drop
+	// first so an ultra-long session can't grow the map without bound.
 	const log = new Map<string, LogEntry & { count: number }>();
+
+	const recordEntry = (path: string, tool: "edit" | "write", snippet: string) => {
+		const prev = log.get(path);
+		log.delete(path);
+		log.set(path, { tool, ts: Date.now(), snippet, count: (prev?.count ?? 0) + 1 });
+		while (log.size > MAX_FILES) {
+			const oldest = log.keys().next().value;
+			if (oldest === undefined) break;
+			log.delete(oldest);
+		}
+	};
 
 	pi.on("session_start", () => {
 		log.clear();
@@ -75,15 +88,11 @@ export default function (pi: ExtensionAPI) {
 		const path = extractPath(event.input);
 		if (!path) return;
 		if (event.toolName === "edit") {
-			const snippet = extractEditSnippet(event.input);
-			const prev = log.get(path);
-			log.set(path, { tool: "edit", ts: Date.now(), snippet, count: (prev?.count ?? 0) + 1 });
+			recordEntry(path, "edit", extractEditSnippet(event.input));
 			return;
 		}
 		if (event.toolName === "write") {
-			const snippet = extractWriteSnippet(event.input);
-			const prev = log.get(path);
-			log.set(path, { tool: "write", ts: Date.now(), snippet, count: (prev?.count ?? 0) + 1 });
+			recordEntry(path, "write", extractWriteSnippet(event.input));
 		}
 	});
 

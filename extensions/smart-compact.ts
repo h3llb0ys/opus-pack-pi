@@ -71,9 +71,15 @@ const extractErrorSnippet = (content: unknown): string => {
 const formatAdvisor = (edits: EditLogEntry[], errors: ErrorLogEntry[]): string | null => {
 	const lines: string[] = [];
 	if (edits.length > 0) {
+		// Collapse multiple touches of the same file → one line with the
+		// most recent tool. Prevents the advisor from blowing its budget on
+		// a loop that edited the same file 40 times.
+		const seen = new Map<string, string>();
+		for (const e of edits.slice(-MAX_EDITS * 4)) seen.set(e.path, e.tool);
+		const ordered = [...seen.entries()].slice(-MAX_EDITS);
 		lines.push("Recently touched files (preserve knowledge of what was changed):");
-		for (const e of edits.slice(-MAX_EDITS)) {
-			lines.push(`  ${e.tool.padEnd(5)} ${e.path}`);
+		for (const [path, tool] of ordered) {
+			lines.push(`  ${tool.padEnd(5)} ${path}`);
 		}
 	}
 	if (errors.length > 0) {

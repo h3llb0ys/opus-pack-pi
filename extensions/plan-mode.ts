@@ -11,7 +11,49 @@ import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Key } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { isExtensionDisabled } from "../lib/settings.js";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { isExtensionDisabled, loadOpusPackSection } from "../lib/settings.js";
+
+interface PlanModeConfig {
+	autoSave: boolean;
+	dir: string;
+}
+
+const DEFAULT_PLAN_CFG: PlanModeConfig = { autoSave: false, dir: ".pi/plans" };
+
+const slugify = (s: string): string =>
+	s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 40) || "plan";
+
+const savePlanToFile = (
+	cwd: string,
+	dirRel: string,
+	plan: string,
+	status: "approved" | "rejected" | "non-interactive",
+	firstStep: string,
+	customName?: string,
+): { path: string } | { error: string } => {
+	try {
+		const dirAbs = join(cwd, dirRel);
+		mkdirSync(dirAbs, { recursive: true });
+		const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+		const slug = customName ? slugify(customName) : slugify(firstStep);
+		const path = join(dirAbs, `${ts}-${slug}.md`);
+		const body = [
+			"---",
+			`created: ${new Date().toISOString()}`,
+			`status: ${status}`,
+			"---",
+			"",
+			plan.trim(),
+			"",
+		].join("\n");
+		writeFileSync(path, body);
+		return { path };
+	} catch (e) {
+		return { error: (e as Error).message };
+	}
+};
 
 const PLAN_MODE_TOOLS = ["read", "bash", "grep", "find", "ls"];
 const NORMAL_MODE_TOOLS = ["read", "bash", "edit", "write"];
@@ -215,6 +257,9 @@ export default function (pi: ExtensionAPI) {
 		promptSnippet: "exit_plan_mode(plan) — finish planning, request user approval to execute",
 		parameters: Type.Object({
 			plan: Type.String({ description: "The final plan as a numbered markdown list." }),
+			save: Type.Optional(Type.String({
+				description: "Optional filename slug. If set (or opus-pack.planMode.autoSave=true), plan is written to <cwd>/.pi/plans/<ts>-<slug>.md with frontmatter.",
+			})),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			if (!planModeEnabled) {
