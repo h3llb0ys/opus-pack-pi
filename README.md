@@ -51,7 +51,7 @@ Tier is controlled by the `alias:fast|balanced|slow` hint in each profile's fron
 ### Community packages installed by the installer
 
 - [`obra/superpowers`](https://github.com/obra/superpowers) — 14 skills (systematic-debugging, brainstorming, writing-plans, TDD, code-review, git-worktrees, …). Only `skills/` is loaded — CC-only `commands/`/`agents/`/`hooks/` are filtered out.
-- [`rynfar/meridian`](https://github.com/rynfar/meridian) — Claude-Max-subscription proxy. Anthropic-only, opt-in via `ANTHROPIC=1 ./install.sh`.
+- [`elidickinson/pi-claude-bridge`](https://github.com/elidickinson/pi-claude-bridge) — full two-way bridge to Claude Code (Pro/Max subscription). Registers `opus`/`sonnet`/`haiku` as selectable `/model` providers, adds an `AskClaude` delegation tool, forwards skills/MCP tools, streaming with thinking support. Replaces the older meridian HTTP proxy. Anthropic-only, opt-in via `ANTHROPIC=1 ./install.sh`.
 - [`viartemev/pi-rtk-rewrite`](https://github.com/viartemev/pi-rtk-rewrite) — auto-rewrites bash commands through `rtk` (60-90% token savings on common commands).
 - [`nicobailon/pi-mcp-adapter`](https://github.com/nicobailon/pi-mcp-adapter) — MCP bridge (CC format, ~200-token proxy tool, lazy lifecycle, `idleTimeout`).
 - [`tmustier/pi-extensions`](https://github.com/tmustier/pi-extensions) — `/usage` dashboard, `/readfiles` file browser, tab-status, ralph-wiggum (long tasks), agent-guidance (Claude/Codex/Gemini switching).
@@ -75,7 +75,7 @@ cd opus-pack-pi
 ./install.sh
 ```
 
-Installing meridian (Anthropic-only) is opt-in:
+Installing pi-claude-bridge (Anthropic-only) is opt-in:
 
 ```sh
 ANTHROPIC=1 ./install.sh

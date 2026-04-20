@@ -75,10 +75,12 @@ PACKAGES=(
 	"git:github.com/ttttmr/pi-context"
 )
 
-# Anthropic-only: Claude Max subscription proxy. Skipped unless explicitly requested
-# or already installed. Set ANTHROPIC=1 to install.
+# Anthropic-only: full two-way bridge between pi and Claude Code (uses a
+# Claude Pro/Max subscription via the Claude Code backend). Replaces the
+# older meridian HTTP proxy. Skipped unless explicitly requested.
+# Set ANTHROPIC=1 to install.
 ANTHROPIC_PKGS=(
-	"git:github.com/rynfar/meridian"
+	"git:github.com/elidickinson/pi-claude-bridge"
 )
 
 INSTALLED="$(pi list 2>/dev/null || true)"
@@ -92,7 +94,7 @@ for pkg in "${PACKAGES[@]}"; do
 	fi
 done
 
-# 3b. Anthropic-only packages (meridian — Claude Max proxy)
+# 3b. Anthropic-only packages (pi-claude-bridge — Claude Code two-way bridge)
 if [ "${ANTHROPIC:-0}" = "1" ]; then
 	for pkg in "${ANTHROPIC_PKGS[@]}"; do
 		short="${pkg##*/}"

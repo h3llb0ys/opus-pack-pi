@@ -20,12 +20,21 @@ log() { printf "%s[%s]%s %s\n" "$c_info" "$1" "$c_off" "$2"; }
 PACKAGES=(
 	"git:github.com/obra/superpowers"
 	"git:github.com/rynfar/meridian"
+	"git:github.com/elidickinson/pi-claude-bridge"
 	"git:github.com/viartemev/pi-rtk-rewrite"
 	"npm:pi-mcp-adapter"
 	"git:github.com/tmustier/pi-extensions"
 	"git:github.com/MasuRii/pi-tool-display"
 	"git:github.com/nicobailon/pi-web-access"
 	"git:github.com/viartemev/pi-working-message"
+	"git:github.com/nicobailon/pi-subagents"
+	"git:github.com/apmantza/pi-lens"
+	"git:github.com/RimuruW/pi-hashline-edit"
+	"git:github.com/dbachelder/pi-btw"
+	"git:github.com/edlsh/pi-ask-user"
+	"git:github.com/acarerdinc/pi-secret-guard"
+	"git:github.com/arpagon/pi-rewind"
+	"git:github.com/ttttmr/pi-context"
 )
 for pkg in "${PACKAGES[@]}"; do
 	log remove "$pkg"
