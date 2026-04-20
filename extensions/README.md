@@ -149,10 +149,13 @@ Pi-native long-running background tasks.
 
 Discovery of community pi extensions.
 
-- **Slash:** `/pi-search [query]` — searches GitHub topic `pi-package`, interactive installer picker, triggers `/reload` on install.
-- **Cache:** 1 hour.
+- **Slash:** `/pi-search [query]` — queries GitHub (`topic:pi-package`) and the npm registry (`keywords:pi-package`, same backend as pi.dev/packages) in parallel, merges by repository slug, interactive installer picker, triggers `/reload` on install.
+- **Install routing:** npm-available packages install via `pi install npm:<name>` (matches pi.dev flow); GitHub-only fallbacks use `pi install git:github.com/<owner>/<repo>`.
+- **Badges:** `[npm+gh]` / `[npm]` / `[gh]` on each row.
+- **Cache:** 1 hour per (query, keyword) pair.
 - **`GITHUB_TOKEN`:** optional; unauthenticated requests are capped at 60/hour.
-- **Warnings:** `< 3 stars` or `> 2 years` since last update.
+- **Warnings:** `< 3 stars` (GitHub side) or `> 2 years` since last update.
+- **Config:** `opus-pack.piSearch.sources` (default `["github", "npm"]`), `opus-pack.piSearch.keyword` (default `"pi-package"` — applied to both GitHub `topic:` and npm `keywords:`), `opus-pack.piSearch.fetchTimeoutMs` (default `10000`).
 
 ### `deferred-tools.ts`
 

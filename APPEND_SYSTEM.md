@@ -90,7 +90,7 @@
 
 ### Extension discovery
 
-- `/pi-search [query]` searches community extensions on GitHub (topic `pi-package`, sorted by stars). Picker → install + `/reload`.
+- `/pi-search [query]` searches community extensions on GitHub (`topic:pi-package`) and the npm registry (`keywords:pi-package`, same source pi.dev/packages uses). Results are merged by repo slug; install prefers `pi install npm:<pkg>` when available, falling back to `pi install git:github.com/<owner>/<repo>`. Picker → install + `/reload`.
 - `GITHUB_TOKEN` is optional; unauthenticated requests are capped at 60/hour.
 - The installer warns when a candidate has fewer than 3 stars or was last updated more than 2 years ago.
 
