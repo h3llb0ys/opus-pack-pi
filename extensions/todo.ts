@@ -248,7 +248,14 @@ export default function (pi: ExtensionAPI) {
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			switch (params.action) {
 				case "add": {
-					const inputs = (params.texts && params.texts.length > 0) ? params.texts : (params.text ? [params.text] : []);
+					// Forgiving merge: when the model passes both `text` and
+					// `texts`, treat `text` as one more entry instead of
+					// silently dropping it. `texts` order is preserved with
+					// `text` appended so the model can still tell the
+					// "primary" item if it cared about order.
+					const inputs: string[] = [];
+					if (params.texts) inputs.push(...params.texts);
+					if (params.text) inputs.push(params.text);
 					if (inputs.length === 0) throw new Error("todo add requires 'text' or non-empty 'texts'");
 					// Fresh plan: wipe if everything was done.
 					if (items.length > 0 && items.every((t) => t.status === "done")) {
@@ -281,7 +288,7 @@ export default function (pi: ExtensionAPI) {
 				}
 				case "start": {
 					if (params.ids && params.ids.length > 0) {
-						throw new Error("todo start does not accept 'ids' — only one task may be in_progress at a time");
+						throw new Error("todo start can only set ONE task in_progress at a time. Pass a single `id` (use the first step you intend to work on); finish it with `todo done <id>`, then call `todo start` again for the next.");
 					}
 					if (!params.id) throw new Error("todo start requires 'id'");
 					const target = startInternal(params.id);
@@ -294,7 +301,15 @@ export default function (pi: ExtensionAPI) {
 					};
 				}
 				case "done": {
-					const ids = (params.ids && params.ids.length > 0) ? params.ids : (params.id ? [params.id] : []);
+					// Forgiving merge: combine `id` + `ids` instead of
+					// dropping one. Trim each id and dedupe so a model
+					// that re-lists the same step in a batch (or pads with
+					// whitespace) doesn't see a self-conflicting
+					// "Done #1. Skipped: #1 (already done)" message.
+					const rawIds: string[] = [];
+					if (params.ids) rawIds.push(...params.ids);
+					if (params.id) rawIds.push(params.id);
+					const ids = [...new Set(rawIds.map((s) => String(s).trim()).filter((s) => s.length > 0))];
 					if (ids.length === 0) throw new Error("todo done requires 'id' or non-empty 'ids'");
 					const completed: TodoEntry[] = [];
 					const skipped: Array<{ id: string; reason: string }> = [];
