@@ -143,6 +143,27 @@ interface DenyRule {
 
 const has = (argv: string[], flag: string) => argv.some((a) => a === flag);
 
+// True if any short-flag cluster in argv contains `letter`. Catches combined
+// forms: `-R` vs `-Rf` vs `-rRf` all match letter=R. Long flags (--recursive)
+// are handled separately where needed.
+const hasShortFlag = (argv: string[], letter: string): boolean =>
+	argv.some((a) => a.length >= 2 && a[0] === "-" && a[1] !== "-" && a.slice(1).includes(letter));
+
+// Common sudo flags that consume a following argv slot for their value.
+// Used so stripSudo skips both the flag and its value before returning the
+// underlying command.
+const SUDO_VALUE_FLAGS = new Set([
+	"-u", "--user",
+	"-g", "--group",
+	"-U",
+	"-C",
+	"-p", "--prompt",
+	"-r", "--role",
+	"-t", "--type",
+	"-D", "--chdir",
+	"-R", "--chroot",
+]);
+
 // Normalise a segment: strip a leading `sudo [flags]` so follow-up rules can
 // match the real command. Bash argv rules still catch `sudo` as head if nothing
 // else does, but this lets us block e.g. `sudo dd if=…` by the same dd rule
@@ -150,7 +171,13 @@ const has = (argv: string[], flag: string) => argv.some((a) => a === flag);
 const stripSudo = (argv: string[]): string[] => {
 	if (argv[0] !== "sudo") return argv;
 	let i = 1;
-	while (i < argv.length && argv[i].startsWith("-")) i++;
+	while (i < argv.length && argv[i].startsWith("-")) {
+		const flag = argv[i];
+		// --flag=value form consumes no extra slot.
+		if (flag.includes("=")) { i++; continue; }
+		if (SUDO_VALUE_FLAGS.has(flag)) { i += 2; continue; }
+		i++;
+	}
 	return argv.slice(i);
 };
 
@@ -160,7 +187,8 @@ const DENY_RULES: DenyRule[] = [
 		match: (argv) => {
 			const a = stripSudo(argv);
 			if (a[0] !== "rm") return false;
-			const rf = a.some((x) => /^-[a-z]*r[a-z]*f|^-[a-z]*f[a-z]*r/i.test(x) || x === "--recursive" || x === "--force");
+			const rf = (hasShortFlag(a, "r") || hasShortFlag(a, "R") || has(a, "--recursive"))
+				&& (hasShortFlag(a, "f") || has(a, "--force"));
 			if (!rf) return false;
 			return a.some((x, i) => i > 0 && (x === "/" || x === "~" || x === "~/" || x === HOME || x === `${HOME}/`));
 		},
@@ -181,14 +209,14 @@ const DENY_RULES: DenyRule[] = [
 		reason: "chmod -R 777 (world-writable recursively)",
 		match: (argv) => {
 			const a = stripSudo(argv);
-			return a[0] === "chmod" && has(a, "-R") && has(a, "777");
+			return a[0] === "chmod" && (hasShortFlag(a, "R") || has(a, "--recursive")) && has(a, "777");
 		},
 	},
 	{
 		reason: "chown -R (recursive ownership change is a common foot-gun)",
 		match: (argv) => {
 			const a = stripSudo(argv);
-			return a[0] === "chown" && has(a, "-R");
+			return a[0] === "chown" && (hasShortFlag(a, "R") || has(a, "--recursive"));
 		},
 	},
 	{
@@ -262,13 +290,16 @@ export default function (pi: ExtensionAPI) {
 			const cmd = String((event.input as { command?: string }).command ?? "");
 			const result = tokenizeCommand(cmd);
 			if (result.dirty) {
-				// Paranoid path: we couldn't parse cleanly. Fall back to the
-				// two most dangerous whole-string regexes to avoid blocking
-				// innocent but exotic commands like `$(< file)`.
+				// Paranoid path: we couldn't parse cleanly. Fall back to a
+				// small set of whole-string regexes covering the truly
+				// unrecoverable actions. Kept conservative — a false positive
+				// here blocks an innocent but exotic command (e.g. `$(< file)`).
 				const paranoid = [
 					{ re: /\brm\s+-[rf]*[rf][rf]*\s+\/(\s|$)/i, reason: "rm -rf / (paranoid match)" },
 					{ re: /:\(\)\s*\{\s*:\|:&\s*\}\s*;:/, reason: "fork bomb" },
 					{ re: /\bcurl\b[^|]*\|\s*(?:ba)?sh\b/, reason: "curl | sh" },
+					{ re: /\bdd\s+[^\n]*\b(if|of)=/, reason: "dd raw disk I/O (paranoid match)" },
+					{ re: /\bmkfs(\.|\s)/, reason: "mkfs filesystem format (paranoid match)" },
 				];
 				for (const p of paranoid) {
 					if (p.re.test(cmd)) {
