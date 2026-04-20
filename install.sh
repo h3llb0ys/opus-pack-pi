@@ -41,6 +41,11 @@ PACKAGES=(
 	"git:github.com/MasuRii/pi-tool-display"
 	"git:github.com/nicobailon/pi-web-access"
 	"git:github.com/viartemev/pi-working-message"
+	# Subagent orchestration (replaces the previously-bundled extensions/subagent/).
+	"git:github.com/nicobailon/pi-subagents"
+	# Static code-quality pipeline on every write/edit: LSP, linters, formatters,
+	# tree-sitter rules, secrets scanning.
+	"git:github.com/apmantza/pi-lens"
 )
 
 # Anthropic-only: Claude Max subscription proxy. Skipped unless explicitly requested
@@ -88,7 +93,7 @@ if [ -f "$REPO_DIR/settings.json.example" ]; then
 	# inline comment / placeholder blocks don't end up in the live config.
 	# opus-pack deep-merges via jq `*` so user customisations survive
 	# re-install (earlier versions did a shallow overwrite which wiped e.g.
-	# user-added permissions rules or subagent.modelAlias).
+	# user-added permissions rules or router levels).
 	jq --slurpfile patch "$REPO_DIR/settings.json.example" '
 		def drop_underscores:
 			if type == "object" then
@@ -149,7 +154,38 @@ if [ ! -d "$REPO_DIR/node_modules/minimatch" ]; then
     (cd "$REPO_DIR" && npm install --omit=dev) 2>/dev/null || warn "npm install failed — permissions extension may not load"
 fi
 
-# 8. Final report
+# 8. lean-ctx (token-optimising shell/read layer). Installs a single Rust
+#    binary. Skip entirely with OPUS_PACK_SKIP_LEAN_CTX=1. Tries brew, then
+#    cargo, then the upstream install script, then gives up with a warning
+#    (the pack still works without it).
+if [ "${OPUS_PACK_SKIP_LEAN_CTX:-0}" = "1" ]; then
+	log skip "lean-ctx (OPUS_PACK_SKIP_LEAN_CTX=1)"
+elif command -v lean-ctx >/dev/null 2>&1; then
+	log skip "lean-ctx (already on PATH)"
+else
+	log install "lean-ctx"
+	installed=0
+	if command -v brew >/dev/null 2>&1; then
+		brew tap yvgude/lean-ctx >/dev/null 2>&1 \
+			&& brew install lean-ctx >/dev/null 2>&1 \
+			&& installed=1
+	fi
+	if [ "$installed" = "0" ] && command -v cargo >/dev/null 2>&1; then
+		cargo install lean-ctx >/dev/null 2>&1 && installed=1
+	fi
+	if [ "$installed" = "0" ]; then
+		curl -fsSL https://leanctx.com/install.sh | sh >/dev/null 2>&1 && installed=1
+	fi
+	if [ "$installed" = "1" ] && command -v lean-ctx >/dev/null 2>&1; then
+		ok "lean-ctx installed"
+		# One-time editor/shell wiring. Non-fatal if it fails — user can re-run.
+		lean-ctx setup >/dev/null 2>&1 || warn "lean-ctx setup failed; run 'lean-ctx setup' manually"
+	else
+		warn "lean-ctx install failed (tried brew / cargo / curl). See https://github.com/yvgude/lean-ctx"
+	fi
+fi
+
+# 9. Final report
 printf "\n═══ Opus Pack installed ═══\n"
 echo "Repo:      $REPO_DIR"
 echo "Settings:  $SETTINGS"

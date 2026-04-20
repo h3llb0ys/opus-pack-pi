@@ -31,7 +31,7 @@
 
 ### Long-running tasks
 
-- **One-shot (build / test / migration):** call the `subagent` tool with `agent: "scout"` (or a project-defined agent). `scout.md` uses `model: alias:fast` (see `opus-pack.subagent.modelAlias`) and returns a structured result.
+- **One-shot (build / test / migration):** invoke a subagent through the installed `pi-subagents` extension — `/run scout "…"` or the `subagent` tool with `{ agent: "scout", task: "…" }`. `scout` uses `model: alias:fast` (resolved by `pi-subagents` against your configured alias map) and returns a structured result.
 - **Watch / dev-server:** pi-native detach.
   ```
   cmd > /tmp/pi-bg-<slug>.log 2>&1 & echo $! > /tmp/pi-bg-<slug>.pid
@@ -118,26 +118,39 @@ Level names come from `opus-pack.modelRouter.levels` (user-configured). Default 
 
 Your own `levels` dict may differ — `/router status` prints the active set.
 
-### Subagents (via the `subagent` tool)
+### Subagents (via `pi-subagents`)
 
-Bundled agents live in `extensions/subagent/agents/`:
+Subagent orchestration is delegated to the installed [`pi-subagents`](https://github.com/nicobailon/pi-subagents) extension — this pack no longer ships its own. The top-level `agents/` directory contributes profiles (`explore`, `verify`, `general-purpose`) alongside the roster bundled with `pi-subagents` (`scout`, `planner`, `worker`, `reviewer`, `context-builder`, `researcher`, `delegate`).
 
-- `scout` — fast codebase recon with bash. Structured findings for handoff to another agent. Uses `model: alias:fast`.
-- `planner` — produces an implementation plan from scout findings + requirements. Read-only.
-- `reviewer` — quality / security / maintainability review. Read-only + git diff/log/show via bash.
-- `worker` — general-purpose writer. Balanced tier, full toolset; usually consumes a planner's output.
+Quick commands (from `pi-subagents`):
 
-Project-local agents: drop `*.md` into `.pi/agents/`; enable by passing `agentScope: "both"` (or `"project"`). The first call in a session prompts for confirmation before running project agents.
+- `/run <agent> <task>` — single-agent one-shot
+- `/chain a1 "t1" -> a2 "t2"` — sequential pipeline with `{previous}` flow
+- `/parallel a1 "t1" -> a2 "t2"` — concurrent execution
+- `/agents` (`Ctrl+Shift+A`) — TUI to browse/edit/create agents
+- `/subagents-status` — monitor async/background runs
 
 Invocation modes on the `subagent` tool:
 
-- `single` — `{ agent, task }`
-- `parallel` — `{ tasks: [{ agent, task }, ...] }` (concurrency 4, max 8)
-- `chain` — `{ chain: [{ agent, task }, ...] }` with `{previous}` placeholder
-- `continue_from: <runId>` — replay a prior run's context into a fresh one-shot (single/chain only)
-
-Runs are persisted to `.pi/agents/<runId>.jsonl` for inspection and `continue_from`.
+- `single`, `parallel`, `chain`, `fork` (isolated branched session per child), `async`/background
+- Worktree isolation via `context: "fork"` for filesystem-protected parallel runs
+- Fallback models when the primary is unavailable
+- Reusable `*.chain.md` files for repeated pipelines
+- Skill injection from `SKILL.md`
 
 Use a subagent when isolated context genuinely helps (multi-file search, verification worth separating from the main flow). For small lookups, inline work is cheaper.
+
+### Code-quality pipeline (`pi-lens`)
+
+Every `write` / `edit` is intercepted by [`pi-lens`](https://github.com/apmantza/pi-lens) and run through LSP, linters, formatters, tree-sitter structural rules, and a secrets scanner before the file is committed to disk. If the pre-write check blocks a write (e.g. credential pattern detected), treat it as a hard stop — don't paper over it with `--force`; fix the content.
+
+Slashes:
+
+- `/lens-booboo` — full quality report for current project state
+- `/lens-health` — runtime metrics, latency, telemetry
+
+### Token-optimised reads and shell (`lean-ctx`)
+
+[`lean-ctx`](https://github.com/yvgude/lean-ctx) wraps CLI output and file reads with aggressive compression. When lean-ctx is installed, prefer its MCP tools over native equivalents for reads and shell commands: cached reads re-cost ~13 tokens, adaptive compression, cross-session memory, tree-sitter parsing across 18 languages. Setup runs once at install time (`lean-ctx setup`). Verify with `lean-ctx doctor`.
 
 <!-- ## Opus Pack rules END -->

@@ -1,6 +1,6 @@
 # opus-pack-pi
 
-Opinionated bundle расширений для [pi-coding-agent](https://github.com/badlogic/pi-mono), дополняющий его CC-паритетом (plan mode, todo, permissions, skills, CC-style hooks и т.д.). Название историческое — пакет начался как сборка под Claude Opus 4.7, но сейчас **провайдер-нейтрален**: работает с Anthropic / OpenAI / Ollama / любым другим провайдером, поддерживаемым pi. Модели subagent'ов и router'а конфигурятся через алиасы в `settings.json` (см. ниже).
+Opinionated bundle расширений для [pi-coding-agent](https://github.com/badlogic/pi-mono), дополняющий его CC-паритетом (plan mode, todo, permissions, skills, CC-style hooks и т.д.). Название историческое — пакет начался как сборка под Claude Opus 4.7, но сейчас **провайдер-нейтрален**: работает с Anthropic / OpenAI / Ollama / любым другим провайдером, поддерживаемым pi. Модели router'а конфигурятся через алиасы в `settings.json`. Subagent-оркестрация делегирована [`pi-subagents`](https://github.com/nicobailon/pi-subagents), статический quality-pipeline — [`pi-lens`](https://github.com/apmantza/pi-lens), сжатие shell/file вывода — [`lean-ctx`](https://github.com/yvgude/lean-ctx).
 
 Берёт community-расширения через нативный `pi install` и добавляет собственные extension'ы для дыр, которые community не закрывает.
 
@@ -38,18 +38,19 @@ Opinionated bundle расширений для [pi-coding-agent](https://github.
 
 ### Vendored extensions (из `pi-mono/examples/extensions/`)
 
-- `subagent/` — `Agent(task, agent_type)` tool, спавнит `pi --json` в subprocess. Работает с `agents/*.md` профилями.
 - `git-checkpoint.ts` — авто-snapshot перед write/edit/bash.
 - `auto-commit-on-exit.ts` — snapshot при выходе из pi.
 - `dirty-repo-guard.ts` — warn при старте на грязном working tree.
 
 ### Agent профили (`agents/`)
 
+Top-level профили в `agents/` подхватываются установленным `pi-subagents` рядом с его собственной пачкой (`scout`, `planner`, `worker`, `reviewer`, `context-builder`, `researcher`, `delegate`):
+
 - `explore.md` (`alias:slow`, read-only) — поиск паттернов, возвращает summary + указания на файлы.
 - `verify.md` (`alias:fast`) — запуск тестов/lint/build, отчёт pass/fail.
 - `general-purpose.md` (`alias:slow`, full toolset, 20-turn cap) — задачи, не вписавшиеся в первые два.
 
-Алиасы `fast` / `balanced` / `slow` резолвятся через `opus-pack.subagent.modelAlias` в `settings.json` — подставь свой провайдер там один раз, профили трогать не надо. См. `extensions/subagent/README.md` для примера конфига.
+Алиасы `fast` / `balanced` / `slow` резолвятся конфигом `pi-subagents` — подставь свой провайдер там один раз, профили трогать не надо.
 
 ### Community packages, которые ставит installer
 
@@ -93,24 +94,10 @@ bash "$(pi list | grep opus-pack-pi | awk '{print $NF}')/install.sh"
 Пакет провайдер-нейтрален. Работающий setup для любого провайдера:
 
 1. Убедись что `pi` знает твой провайдер (ключ в env или `~/.pi/agent/auth.json`).
-2. Открой `~/.pi/agent/settings.json` и заполни **`opus-pack.subagent.modelAlias`** — так все bundled-профили (`explore`, `verify`, `scout`, `planner`, `worker`, `reviewer`, `general-purpose`) получат рабочие модели:
-
-   ```json
-   // Anthropic
-   "modelAlias": { "fast": "claude-haiku-4-5", "balanced": "claude-sonnet-4-6", "slow": "claude-opus-4-7" }
-
-   // OpenAI
-   "modelAlias": { "fast": "gpt-5.3-mini", "balanced": "gpt-5.3", "slow": "gpt-5.3" }
-
-   // Ollama / local
-   "modelAlias": { "fast": "qwen3-8b-instruct", "balanced": "qwen3-30b-instruct", "slow": "llama3.1-70b-instruct" }
-   ```
-
-   Если оставить пустым — subagent унаследует default-модель pi-сессии.
-
+2. Настрой model aliases в конфиге `pi-subagents` (см. README этого пакета) — там резолвятся `fast` / `balanced` / `slow` для всех профилей (`scout`, `planner`, `worker`, `reviewer`, `explore`, `verify`, `general-purpose`, …).
 3. (Опционально) заполни `opus-pack.modelRouter.levels` для авто-переключения модели в основной сессии. Примеры см. в `settings.json.example` (ключи `_levels_example_*`).
 
-Готовые multi-provider примеры для обоих блоков лежат в `settings.json.example` — копируй тот, что под твой провайдер.
+Готовые multi-provider примеры для router-блока лежат в `settings.json.example`.
 
 ## Что `install.sh` трогает
 

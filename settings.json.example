@@ -64,17 +64,6 @@
         { "minChars": 2000,                                              "level": "high"    }
       ]
     },
-    "subagent": {
-      "_comment": "Subagent profiles use `model: alias:<name>` to stay provider-neutral. Pick the mapping that matches your provider. If a name is missing or left empty, the subagent inherits the parent pi session's default model.",
-      "modelAlias": {
-        "fast":     "",
-        "balanced": "",
-        "slow":     ""
-      },
-      "_modelAlias_example_anthropic": { "fast": "claude-haiku-4-5", "balanced": "claude-sonnet-4-6", "slow": "claude-opus-4-7" },
-      "_modelAlias_example_openai":    { "fast": "gpt-5.3-mini",     "balanced": "gpt-5.3",           "slow": "gpt-5.3" },
-      "_modelAlias_example_ollama":    { "fast": "qwen3-8b-instruct","balanced": "qwen3-30b-instruct","slow": "llama3.1-70b-instruct" }
-    },
     "bashProgress": {
       "_comment": "Live widget for long bash commands.",
       "enabled": true,

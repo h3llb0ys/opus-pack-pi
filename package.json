@@ -1,7 +1,7 @@
 {
   "name": "opus-pack-pi",
   "version": "0.1.0",
-  "description": "Opinionated, provider-neutral bundle for pi-coding-agent: Claude-Code-parity extensions (plan mode, todo, permissions, file-based commands, CC-style hooks, skills), subagent with isolated context, safety gates, model router, and more.",
+  "description": "Opinionated, provider-neutral bundle for pi-coding-agent: Claude-Code-parity extensions (plan mode, todo, permissions, file-based commands, CC-style hooks, skills), safety gates, model router, and more. Integrates with pi-subagents, pi-lens, and lean-ctx.",
   "keywords": [
     "pi-package",
     "pi-coding-agent",
