@@ -23,7 +23,7 @@ The installer also pulls selected community packages through native `pi install`
 | `skills.ts` | Registers `~/.{claude,codex,gemini,pi}/skills` as skill roots so cross-vendor CC-style skills are visible to pi's `<available_skills>` catalogue. |
 | `desktop-notify.ts` | OS notification (macOS/Linux) when an agent finishes. Configurable duration threshold + sound. `/notify-test`. |
 | `iteration-guard.ts` | Cap on turns per agent run (default 40, configurable via `opus-pack.iterationGuard`). `/continue` extends by `extendBy`. Supports `--max-turns=<N>` flag and `PI_MAX_TURNS` env var. |
-| `safe-deny.ts` | Non-interactively blocks destructive operations: `rm -rf /`, `git push --force` on main, `--no-verify` commits, writes to `~/.{claude,codex,gemini,openai,anthropic}`, `.env`, `*.pem`, `~/.ssh`. Bypass: `PI_OPUS_PACK_UNSAFE=1`. |
+| `safe-deny.ts` | Non-interactively blocks destructive operations. Bash rules (argv-aware, sudo-unwrapping): `rm -rf /|~`, `git push --force` on main/master, `git commit --no-verify`, `chmod -R 777`, `chown -R`, `dd if=/of=`, `mkfs.*`, fork bombs, `curl\|sh`. Path rules — **write** blocked on `.env`, `*.pem`, `*.key`, `id_rsa/ed25519/...`, `.netrc`, `~/.ssh`, `~/.aws`, `~/.config/gcloud`, `~/.kube`, `~/.openai`, `~/.anthropic`, `~/.{claude,codex,gemini}`; **read** also blocked on the credential-material subset above (prevents exfiltration into prompt context). Bypass: `PI_OPUS_PACK_UNSAFE=1`. |
 | `status.ts` | `/status` — summary (extensions, skills, prompts, MCP tools, model, ctx usage). Live status line: `cwd · branch · model · ctx:X%`. Footer: `ext:N skills:M mcp:K`. Optional `opus-pack.statusLine.command` runs a user shell command whose stdout lands in the status bar. |
 | `list-resources.ts` | `/extensions`, `/prompts` — runtime listing. `/extensions` doubles as a health dashboard showing enabled/disabled state for every pack extension. `/skills` is provided by the installed `pi-skills-menu` package. |
 | `hook-bridge.ts` | Reads the `hooks` block from `settings.json` in Claude Code format and runs shell commands on pi events (`PreToolUse`, `PostToolUse`, `SessionStart`, `SessionEnd`, `Stop`, `UserPromptSubmit`, `PreCompact`). Lets you copy-paste CC configs and third-party hook scripts. |
@@ -50,8 +50,30 @@ Tier is controlled by the `alias:fast|balanced|slow` hint in each profile's fron
 
 ### Community packages installed by the installer
 
+Core replacements (supersede code we used to ship or fill a clear gap):
+
+- [`nicobailon/pi-subagents`](https://github.com/nicobailon/pi-subagents) — subagent orchestration: 7 bundled agents (scout/planner/worker/reviewer/context-builder/researcher/delegate), TUI at `Ctrl+Shift+A`, `.chain.md` pipelines, git worktree isolation, fork/async modes, fallback models, SKILL.md injection. Replaces a previously-bundled `extensions/subagent/`.
+- [`apmantza/pi-lens`](https://github.com/apmantza/pi-lens) — real-time code-quality pipeline on every write/edit: LSP (37 servers), linters (Biome/Ruff/ESLint/stylelint/sqlfluff/RuboCop), 26+ formatters, tree-sitter rules, cyclomatic-complexity metrics, secrets scanning that blocks writes. `/lens-booboo`, `/lens-health`.
+- [`RimuruW/pi-hashline-edit`](https://github.com/RimuruW/pi-hashline-edit) — overrides `read`/`grep`/`edit` with hash-anchored line references (`LINE#HASH`). Kills the "string not found" / ambiguous-match class of edit failures. Ported from oh-my-pi.
+- [`arpagon/pi-rewind`](https://github.com/arpagon/pi-rewind) — per-turn git-ref checkpoints with conversation-state rollback, diff preview, redo stack, branch safety, safe-restore. `/rewind` + `Esc+Esc`. Replaces our earlier `rewind` + `git-checkpoint` extensions.
+- [`ttttmr/pi-context`](https://github.com/ttttmr/pi-context) — agentic context management. `/context` dashboard + `context_tag`, `context_log`, `context_checkout` (git-like: name milestones, move HEAD, compress completed work into summary without a full `/compact`).
+- [`Kmiyh/pi-skills-menu`](https://github.com/Kmiyh/pi-skills-menu) — `/skills` interactive menu: search, preview, insert, AI-assisted create, edit, rename, delete, toggle. Replaces the read-only `/skills` listing we used to register.
+- [`dbachelder/pi-btw`](https://github.com/dbachelder/pi-btw) — `/btw` parallel side-conversation sub-session. Ask clarifying questions or explore tangents without derailing the main agent turn; `/btw:inject` returns results. `Alt+/` toggles focus.
+- [`edlsh/pi-ask-user`](https://github.com/edlsh/pi-ask-user) — richer `ask_user` tool: searchable options, multi-select, freeform input, overlay mode, bundled decision-gating skill. Replaces our baseline `extensions/ask-user.ts`.
+
+Security (defense-in-depth layered with our `safe-deny` and `pi-lens`):
+
+- [`acarerdinc/pi-secret-guard`](https://github.com/acarerdinc/pi-secret-guard) — scans `git commit` / `git push` diffs for 30+ secret patterns (AWS/Azure/GCP/GitHub tokens, JWT, private keys, password=/api_key= assignments) with hard-block + agent-review for suspicious cases.
+
+Provider / performance helpers:
+
+- [`yvgude/lean-ctx`](https://github.com/yvgude/lean-ctx) — standalone Rust binary (installed via brew/cargo/curl fallback chain). Compresses shell and file-read output through 90+ CLI patterns, 8 file-read modes, tree-sitter parsing for 18 languages. ~90% token savings on dev operations. Skippable with `OPUS_PACK_SKIP_LEAN_CTX=1`.
+- [`shaftoe/pi-zai-usage`](https://github.com/shaftoe/pi-zai-usage) — footer indicator for Z.ai subscription quota. Auto-activates only when a `glm-*` model is in use; silent otherwise.
+- [`elidickinson/pi-claude-bridge`](https://github.com/elidickinson/pi-claude-bridge) — full two-way bridge to Claude Code (Pro/Max subscription). Registers `opus`/`sonnet`/`haiku` as selectable `/model` providers, adds an `AskClaude` delegation tool, forwards skills/MCP tools, streaming with thinking support. Replaces the older meridian HTTP proxy. **Anthropic-only, opt-in via `ANTHROPIC=1 ./install.sh`.**
+
+Long-standing community extras:
+
 - [`obra/superpowers`](https://github.com/obra/superpowers) — 14 skills (systematic-debugging, brainstorming, writing-plans, TDD, code-review, git-worktrees, …). Only `skills/` is loaded — CC-only `commands/`/`agents/`/`hooks/` are filtered out.
-- [`elidickinson/pi-claude-bridge`](https://github.com/elidickinson/pi-claude-bridge) — full two-way bridge to Claude Code (Pro/Max subscription). Registers `opus`/`sonnet`/`haiku` as selectable `/model` providers, adds an `AskClaude` delegation tool, forwards skills/MCP tools, streaming with thinking support. Replaces the older meridian HTTP proxy. Anthropic-only, opt-in via `ANTHROPIC=1 ./install.sh`.
 - [`viartemev/pi-rtk-rewrite`](https://github.com/viartemev/pi-rtk-rewrite) — auto-rewrites bash commands through `rtk` (60-90% token savings on common commands).
 - [`nicobailon/pi-mcp-adapter`](https://github.com/nicobailon/pi-mcp-adapter) — MCP bridge (CC format, ~200-token proxy tool, lazy lifecycle, `idleTimeout`).
 - [`tmustier/pi-extensions`](https://github.com/tmustier/pi-extensions) — `/usage` dashboard, `/readfiles` file browser, tab-status, ralph-wiggum (long tasks), agent-guidance (Claude/Codex/Gemini switching).
@@ -108,8 +130,10 @@ Ready-to-copy multi-provider examples for the router block live in `settings.jso
 - `~/.pi/agent/settings.json` — **jq deep-merge**, never overwrites unrelated keys. Updates only `hooks`, `opus-pack`, and `packages`.
 - `~/.pi/agent/mcp.json` — merges the (empty by default) `mcpServers` block from `mcp.json.example`. Add your own MCP servers there.
 - `~/.pi/agent/APPEND_SYSTEM.md` — **append-only** with `<!-- Opus Pack rules START/END -->` markers. Re-runs don't duplicate.
+- `~/.pi/agent/agents/` — copies our `explore.md` / `verify.md` profiles with `cp -n` (never clobbers your edits on reinstall).
 - `pi install <pkg>` for each missing community package.
 - `pi install <REPO_DIR>` registers the local repo path.
+- `lean-ctx` — if not already on PATH, attempts brew → cargo → curl install script fallback chain. Skip with `OPUS_PACK_SKIP_LEAN_CTX=1`.
 
 Nothing else. No changes to `~/.claude/`, no global shell config edits.
 
