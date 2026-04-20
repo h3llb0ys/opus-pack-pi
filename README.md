@@ -1,8 +1,8 @@
 # opus-pack-pi
 
-An opinionated, provider-neutral extension bundle for [pi-coding-agent](https://github.com/badlogic/pi-mono). Brings Claude-Code-parity features (plan mode, todo, permissions, CC-style hooks, skills discovery), integrates a curated set of community packages, and gets out of your way.
+Provider-neutral extension bundle for [pi-coding-agent](https://github.com/badlogic/pi-mono). Adds Claude-Code-parity features (plan mode, todo, permissions, CC-style hooks, skill discovery), curates a set of community packages for subagents, code quality, editing, and context management, and wires everything up through a single idempotent installer.
 
-> Provider-neutral by design. Works with Anthropic, OpenAI, Ollama, local `llama.cpp`, or custom proxies. Swap providers by editing one alias map.
+> Works with Anthropic, OpenAI, Ollama, local `llama.cpp`, or custom proxies. Swap providers by editing one alias map.
 
 [Русская версия](./README.ru.md)
 
@@ -111,7 +111,7 @@ Grouped the same way `/opus-pack` groups them.
 | `cc-bridge.skills` | Registers `<vendor>/skills` as skill roots (`~/.claude`, `~/.codex`, `~/.gemini`, `~/.pi`, plus the same four under the project root). Cross-vendor CC-style skills appear in pi's `<available_skills>` catalogue. |
 | `cc-bridge.commands` | Loads `*.md` slash commands with YAML frontmatter from `<vendor>/commands` at user and project scope. Subdirectories become `plugin:name` namespaces. `$ARGS` / `$1..$9` substitution. Drops in CC-format commands unmodified. |
 | `cc-bridge.claude-md` | Auto-loads `~/.{claude,codex,gemini,pi}/CLAUDE.md\|AGENTS.md` + an upward walk of `CLAUDE.md` / `AGENTS.md` from the cwd into the system prompt. Mtime-cached. |
-| `cc-bridge.hooks` | Claude-Code-format hooks from **two sources**: the `hooks` block in `~/.pi/agent/settings.json` / `<cwd>/.pi/settings.json` (legacy schema, paste CC configs unchanged) **and** file-tree discovery under `<vendor>/hooks/*.md\|*.sh` (frontmatter `event` / `matcher` / `timeout`; body is the shell script). Events: `PreToolUse`, `PostToolUse`, `SessionStart`, `SessionEnd`, `Stop`, `UserPromptSubmit`, `PreCompact`. |
+| `cc-bridge.hooks` | Claude-Code-format hooks from **two sources**. (a) The `hooks` block in `~/.pi/agent/settings.json` / `<cwd>/.pi/settings.json` — same schema as Claude Code, so CC configs paste in unchanged. (b) File-tree discovery under `<vendor>/hooks/*.md` or `*.sh` with frontmatter `event` / `matcher` / `timeout`; body is the shell script, or for `.sh` files the file itself runs directly. Both sources are merged per event (settings.json first, then user-scope files, then project-scope files). Events: `PreToolUse`, `PostToolUse`, `SessionStart`, `SessionEnd`, `Stop`, `UserPromptSubmit`, `PreCompact`. |
 
 | Extension | What it does |
 |---|---|
@@ -136,37 +136,48 @@ Grouped the same way `/opus-pack` groups them.
 
 ### Community packages installed by `install.sh`
 
-#### Core replacements (supersede code we used to ship or fill a clear gap)
+#### Subagents
 
-- **[`nicobailon/pi-subagents`](https://github.com/nicobailon/pi-subagents)** — subagent orchestration. 7 bundled agents (`scout`, `planner`, `worker`, `reviewer`, `context-builder`, `researcher`, `delegate`), TUI at `Ctrl+Shift+A`, reusable `.chain.md` pipelines, git worktree isolation, fork / async modes, fallback models, `SKILL.md` injection. Replaced our home-grown subagent.
-- **[`apmantza/pi-lens`](https://github.com/apmantza/pi-lens)** — real-time code-quality pipeline on every write/edit: LSP (37 servers), linters (Biome, Ruff, ESLint, stylelint, sqlfluff, RuboCop), 26+ formatters, tree-sitter rules, cyclomatic-complexity metrics, secrets scanning that blocks writes. `/lens-booboo` and `/lens-health`.
-- **[`RimuruW/pi-hashline-edit`](https://github.com/RimuruW/pi-hashline-edit)** — overrides `read` / `grep` / `edit` with hash-anchored line references (`LINE#HASH`). Kills the whole "string not found" / ambiguous-match class of edit failures. Ported from oh-my-pi.
-- **[`arpagon/pi-rewind`](https://github.com/arpagon/pi-rewind)** — per-turn git-ref checkpoints with conversation-state rollback, diff preview, redo stack, branch safety, safe-restore. `/rewind` + `Esc+Esc`. Replaced our earlier `rewind` and `git-checkpoint` extensions.
+- **[`nicobailon/pi-subagents`](https://github.com/nicobailon/pi-subagents)** — subagent orchestration. Seven bundled agents (`scout`, `planner`, `worker`, `reviewer`, `context-builder`, `researcher`, `delegate`), TUI at `Ctrl+Shift+A`, reusable `.chain.md` pipelines, git worktree isolation, fork / async modes, fallback models, `SKILL.md` injection.
+
+#### Editing & code quality
+
+- **[`apmantza/pi-lens`](https://github.com/apmantza/pi-lens)** — runs LSP (37 servers), linters (Biome, Ruff, ESLint, stylelint, sqlfluff, RuboCop), 26+ formatters, tree-sitter rules, cyclomatic-complexity metrics, and a secrets scanner on every `write`/`edit`. Blocks writes that fail secret or quality checks. `/lens-booboo` and `/lens-health`.
+- **[`RimuruW/pi-hashline-edit`](https://github.com/RimuruW/pi-hashline-edit)** — hash-anchored `read` / `grep` / `edit`. Every line returned by `read` carries a `LINE#HASH` prefix; `edit` references anchors instead of raw text, so stale context fails loud and ambiguous matches never silently corrupt a file.
+
+#### Checkpoints & context
+
+- **[`arpagon/pi-rewind`](https://github.com/arpagon/pi-rewind)** — per-turn git-ref checkpoints with conversation-state rollback, diff preview, redo stack, branch safety, and a refuse-list that keeps `node_modules` / `.venv` out of harm's way. `/rewind` + `Esc+Esc`.
 - **[`ttttmr/pi-context`](https://github.com/ttttmr/pi-context)** — agentic context management. `/context` dashboard plus `context_tag`, `context_log`, `context_checkout` (name milestones, move HEAD, compress completed work into a summary without a full `/compact`).
-- **[`Kmiyh/pi-skills-menu`](https://github.com/Kmiyh/pi-skills-menu)** — `/skills` interactive menu: search, preview, insert, AI-assisted create, edit, rename, delete, toggle. Replaced our read-only `/skills` listing.
-- **[`dbachelder/pi-btw`](https://github.com/dbachelder/pi-btw)** — `/btw` parallel side-conversation sub-session. Ask a clarifying question or explore a tangent without derailing the main agent turn; `/btw:inject` returns the result. `Alt+/` toggles focus.
-- **[`edlsh/pi-ask-user`](https://github.com/edlsh/pi-ask-user)** — richer `ask_user` tool: searchable options, multi-select, freeform input, overlay mode, bundled decision-gating skill. Replaced our baseline `ask-user.ts`.
 
-#### Security (defense-in-depth with `safe-deny` and `pi-lens`)
+#### User interaction
 
-- **[`acarerdinc/pi-secret-guard`](https://github.com/acarerdinc/pi-secret-guard)** — scans `git commit` / `git push` diffs for 30+ secret patterns (AWS, Azure, GCP, GitHub tokens, JWT, private keys, `password=` / `api_key=` assignments) with hard-block + agent-review for suspicious cases.
+- **[`edlsh/pi-ask-user`](https://github.com/edlsh/pi-ask-user)** — `ask_user` tool with searchable options, multi-select, freeform input, overlay mode, and a bundled decision-gating skill.
+- **[`Kmiyh/pi-skills-menu`](https://github.com/Kmiyh/pi-skills-menu)** — `/skills` interactive menu: search, preview, insert, AI-assisted create, edit, rename, delete, enable/disable.
+- **[`dbachelder/pi-btw`](https://github.com/dbachelder/pi-btw)** — `/btw` parallel side-conversation sub-session. Ask a clarifying question or explore a tangent without derailing the main turn; `/btw:inject` returns the result. `Alt+/` toggles focus.
+
+#### Security
+
+These three layer cleanly, each covering a different tool event:
 
 | Layer | Vector | Event |
 |---|---|---|
-| `safe-deny` | path-based (`.env`, `*.pem`, `~/.ssh` …) on read + write | read / write / edit / grep |
-| `pi-lens` | content-scan on write | write / edit |
-| `pi-secret-guard` | content-scan of git diff | bash `git commit` / `git push` |
+| `safe-deny` (own) | path-based (`.env`, `*.pem`, `~/.ssh` …) on read + write | `read` / `write` / `edit` / `grep` |
+| `pi-lens` | content-scan on write | `write` / `edit` |
+| `pi-secret-guard` | content-scan of git diff | `bash` `git commit` / `git push` |
+
+- **[`acarerdinc/pi-secret-guard`](https://github.com/acarerdinc/pi-secret-guard)** — scans `git commit` / `git push` diffs for 30+ secret patterns (AWS, Azure, GCP, GitHub tokens, JWT, private keys, `password=` / `api_key=` assignments) with hard-block + agent-review for suspicious cases.
 
 #### Performance & providers
 
 - **[`yvgude/lean-ctx`](https://github.com/yvgude/lean-ctx)** — standalone Rust binary installed via `brew` → `cargo` → `curl` fallback chain. Compresses shell and file-read output through 90+ CLI patterns, 8 file-read modes, tree-sitter parsing across 18 languages. ~90% token savings on dev operations. Skip with `OPUS_PACK_SKIP_LEAN_CTX=1`.
-- **[`shaftoe/pi-zai-usage`](https://github.com/shaftoe/pi-zai-usage)** — footer indicator for Z.ai subscription quota. Auto-activates when a `glm-*` model is in use; silent otherwise.
-- **[`elidickinson/pi-claude-bridge`](https://github.com/elidickinson/pi-claude-bridge)** — full two-way bridge to Claude Code (Pro/Max subscription). Registers `opus` / `sonnet` / `haiku` as selectable `/model` providers, adds an `AskClaude` delegation tool, forwards skills and MCP tools, streams with thinking support. **Anthropic-only, opt-in via `ANTHROPIC=1 ./install.sh`.**
+- **[`shaftoe/pi-zai-usage`](https://github.com/shaftoe/pi-zai-usage)** — footer indicator for Z.ai subscription quota. Active only when a `glm-*` model is in use; silent otherwise.
+- **[`elidickinson/pi-claude-bridge`](https://github.com/elidickinson/pi-claude-bridge)** — two-way bridge to Claude Code (Pro/Max subscription). Registers `opus` / `sonnet` / `haiku` as selectable `/model` providers, adds an `AskClaude` delegation tool, forwards skills and MCP tools, streams with thinking support. **Anthropic-only, opt-in via `ANTHROPIC=1 ./install.sh`.**
 
-#### Long-standing extras
+#### Skills, MCP, and misc
 
-- **[`obra/superpowers`](https://github.com/obra/superpowers)** — 14 skills: systematic-debugging, brainstorming, writing-plans, TDD, code-review, git-worktrees, and more. Only `skills/` is loaded; CC-only `commands/` / `agents/` / `hooks/` are filtered out.
-- **[`viartemev/pi-rtk-rewrite`](https://github.com/viartemev/pi-rtk-rewrite)** — auto-rewrites bash commands through `rtk` (60–90% token savings on common commands).
+- **[`obra/superpowers`](https://github.com/obra/superpowers)** — 14 skills: systematic-debugging, brainstorming, writing-plans, TDD, code-review, git-worktrees, and others. Only `skills/` is loaded; CC-only `commands/` / `agents/` / `hooks/` are filtered out.
+- **[`viartemev/pi-rtk-rewrite`](https://github.com/viartemev/pi-rtk-rewrite)** — rewrites bash commands through `rtk` (60–90% token savings on common commands).
 - **[`nicobailon/pi-mcp-adapter`](https://github.com/nicobailon/pi-mcp-adapter)** — MCP bridge in Claude Code format, ~200-token proxy tool, lazy lifecycle, `idleTimeout`.
 - **[`tmustier/pi-extensions`](https://github.com/tmustier/pi-extensions)** — `/usage` dashboard, `/readfiles` file browser, tab-status, ralph-wiggum (long tasks), agent-guidance (Claude / Codex / Gemini switching).
 - **[`nicobailon/pi-web-access`](https://github.com/nicobailon/pi-web-access)** — web search + extraction.
