@@ -376,8 +376,22 @@ export default function (pi: ExtensionAPI) {
 					persist();
 					renderWidget(ctx, items);
 					emitChanged();
+					// Suffix has to acknowledge both lanes: a closed batch
+					// of `done` may leave pending work AND/OR dispatched
+					// (subagent) work still in flight. Saying "All done!"
+					// while subagents haven't returned would mislead the
+					// model into thinking the plan is complete.
 					const next = items.find((t) => t.status === "pending");
-					const suffix = next ? ` Next pending: #${next.id} — ${next.text}. Call todo start ${next.id}.` : " All done!";
+					const remainingDispatched = items.filter((t) => t.status === "dispatched").length;
+					let suffix: string;
+					if (next) {
+						suffix = ` Next pending: #${next.id} — ${next.text}. Call todo start ${next.id}.`;
+						if (remainingDispatched > 0) suffix += ` (${remainingDispatched} dispatched task(s) still in flight.)`;
+					} else if (remainingDispatched > 0) {
+						suffix = ` ${remainingDispatched} dispatched task(s) still in flight — close with todo done ids:[...] when subagents return.`;
+					} else {
+						suffix = " All done!";
+					}
 					if (completed.length === 1 && skipped.length === 0) {
 						return {
 							content: [{ type: "text", text: `Done #${completed[0].id}: ${completed[0].text}.${suffix}` }],
