@@ -10,8 +10,10 @@
  * task back to pending. Mirrors Claude Code's TodoWrite discipline so the
  * model has a familiar single-active cursor.
  *
- * Enforcement: first modifying tool_call without prior todo use → steering nag.
- * Second nag condition: extended modifying run with no in_progress task.
+ * Enforcement: a single steering nag fires only after the model racks
+ * up several modifying operations without any `in_progress` task — the
+ * actual signal of an unstructured multi-step run. One-shot edits stay
+ * silent; the nag's wording adapts to whether there are todos at all.
  *
  * Cross-extension API (event bus):
  *   emit "opus-pack:todo:replace"  { items: Array<{text, done?}>, source? }
@@ -67,7 +69,11 @@ const MODIFYING_BASH_PATTERNS = [
 const isModifyingBash = (cmd: string): boolean =>
 	MODIFYING_BASH_PATTERNS.some((p) => p.test(cmd));
 
-const MODIFYING_CALLS_BEFORE_START_NAG = 3;
+// How many modifying operations without an `in_progress` task we allow
+// before nudging the model. Set to 2 so a one-shot edit stays silent
+// while a pattern of repeated modifications (the actual signal of a
+// multi-step run) triggers a single reminder.
+const MODIFYING_CALLS_BEFORE_START_NAG = 2;
 
 export default function (pi: ExtensionAPI) {
 	if (isExtensionDisabled("todo")) return;
@@ -75,8 +81,6 @@ export default function (pi: ExtensionAPI) {
 	let nextId = 1;
 
 	// Enforcement state per agent run.
-	let todoWasUsed = false;
-	let hasNaggedStart = false;
 	let hasNaggedInProgress = false;
 	let modifyingCallsWithoutInProgress = 0;
 
@@ -95,8 +99,6 @@ export default function (pi: ExtensionAPI) {
 	};
 
 	const resetEnforcement = () => {
-		todoWasUsed = items.length > 0;
-		hasNaggedStart = false;
 		hasNaggedInProgress = false;
 		modifyingCallsWithoutInProgress = 0;
 	};
@@ -149,8 +151,6 @@ export default function (pi: ExtensionAPI) {
 		}
 		// Fresh plan installed externally: reset nag state so enforcement
 		// starts over against the new list.
-		todoWasUsed = items.length > 0;
-		hasNaggedStart = false;
 		hasNaggedInProgress = false;
 		modifyingCallsWithoutInProgress = 0;
 		persist();
@@ -180,10 +180,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("tool_call", async (event, _ctx) => {
-		if (event.toolName === "todo") {
-			todoWasUsed = true;
-			return;
-		}
+		if (event.toolName === "todo") return;
 
 		let isModifying = MODIFYING_TOOLS.has(event.toolName);
 		if (event.toolName === "bash") {
@@ -192,39 +189,36 @@ export default function (pi: ExtensionAPI) {
 		}
 		if (!isModifying) return;
 
-		// Nag #1: started editing without any todo plan.
-		if (!hasNaggedStart && !todoWasUsed) {
-			hasNaggedStart = true;
-			pi.sendMessage(
-				{
-					customType: "todo-nag",
-					content: "⚠ You started modifying code without a plan. Call `todo add` for each step, then `todo start` → work → `todo done`.",
-					display: true,
-				},
-				{ deliverAs: "steer" },
-			);
+		// Single nag: detect sustained modifying activity without a task
+		// in_progress. This replaces the old zero-threshold "first-edit"
+		// nag — small one-shot fixes (a single edit / write / mkdir)
+		// should NOT trigger a discipline reminder. Only when the model
+		// racks up several modifying operations without any todo cursor
+		// do we tap on the shoulder.
+		//
+		// Two shapes covered by the same counter:
+		//   a) No todos at all → nag suggests `todo add` + `todo start`.
+		//   b) Todos exist but none is in_progress → nag suggests only
+		//      `todo start <id>` (user has already planned).
+		const hasInProgress = items.some((t) => t.status === "in_progress");
+		const hasOpenWork = items.some((t) => t.status !== "done");
+		if (hasInProgress) {
+			modifyingCallsWithoutInProgress = 0;
 			return;
 		}
 
-		// Nag #2: running modifying ops without any task in_progress.
-		const hasInProgress = items.some((t) => t.status === "in_progress");
-		const hasOpenWork = items.some((t) => t.status !== "done");
-		if (!hasInProgress && hasOpenWork) {
-			modifyingCallsWithoutInProgress++;
-			if (!hasNaggedInProgress && modifyingCallsWithoutInProgress >= MODIFYING_CALLS_BEFORE_START_NAG) {
-				hasNaggedInProgress = true;
-				pi.sendMessage(
-					{
-						customType: "todo-nag",
-						content: "⚠ You are writing code but no task is in_progress. Call `todo start <id>` on the current step.",
-						display: true,
-					},
-					{ deliverAs: "steer" },
-				);
-			}
-		} else {
-			modifyingCallsWithoutInProgress = 0;
-		}
+		modifyingCallsWithoutInProgress++;
+		if (hasNaggedInProgress) return;
+		if (modifyingCallsWithoutInProgress < MODIFYING_CALLS_BEFORE_START_NAG) return;
+
+		hasNaggedInProgress = true;
+		const msg = hasOpenWork
+			? "⚠ You are writing code but no task is in_progress. Call `todo start <id>` on the current step."
+			: "⚠ You have made several modifications without a plan. If this is a multi-step task (3+ steps), call `todo add` for each step, then `todo start <id>` on the first.";
+		pi.sendMessage(
+			{ customType: "todo-nag", content: msg, display: true },
+			{ deliverAs: "steer" },
+		);
 	});
 
 	pi.registerTool({
