@@ -104,16 +104,21 @@ Pack состоит из трёх слоёв:
 
 #### Integrations
 
+`cc-bridge` — одно расширение, которое содержит четыре CC-parity sub-модуля под одним namespace. Каждый sub-модуль toggle'ится независимо через `cc-bridge.<sub>` в `settings.local.json`, все четыре делят `/cc-bridge [status|reload|help]` slash.
+
+| Sub-модуль | Что делает |
+|---|---|
+| `cc-bridge.skills` | Регистрирует `<vendor>/skills` как skill roots (`~/.claude`, `~/.codex`, `~/.gemini`, `~/.pi` + те же четыре под корнем проекта). Cross-vendor CC-style скиллы появляются в pi `<available_skills>`. |
+| `cc-bridge.commands` | Грузит `*.md` slash-команды с YAML frontmatter из `<vendor>/commands` на user и project scope. Поддиректории становятся `plugin:name` namespaces. Подстановка `$ARGS` / `$1..$9`. CC-формат работает без изменений. |
+| `cc-bridge.claude-md` | Автоподхват `~/.{claude,codex,gemini,pi}/CLAUDE.md\|AGENTS.md` + upward walk `CLAUDE.md` / `AGENTS.md` с cwd в system prompt. Mtime-cached. |
+| `cc-bridge.hooks` | Claude-Code-format hooks из **двух источников**: блок `hooks` в `~/.pi/agent/settings.json` / `<cwd>/.pi/settings.json` (legacy схема, копипасть CC-конфиги как есть) **и** file-tree discovery под `<vendor>/hooks/*.md\|*.sh` (frontmatter `event` / `matcher` / `timeout`; body — shell script). Events: `PreToolUse`, `PostToolUse`, `SessionStart`, `SessionEnd`, `Stop`, `UserPromptSubmit`, `PreCompact`. |
+
 | Расширение | Что делает |
 |---|---|
-| `skills` | Регистрирует `~/.{claude,codex,gemini,pi}/skills` как skill roots — cross-vendor CC-style скиллы появляются в pi `<available_skills>`. |
-| `hook-bridge` | Читает блок `hooks` из `settings.json` в формате Claude Code, запускает shell-команды на pi-события (`PreToolUse`, `PostToolUse`, `SessionStart`, `SessionEnd`, `Stop`, `UserPromptSubmit`, `PreCompact`). Копипасть CC-конфиги как есть. |
 | `pi-search` | `/pi-search [query]` — discovery по GitHub topic `pi-package` + interactive install + `/reload`. Cache 1h. |
-| `claude-md-loader` | Автоподхват `~/.{claude,codex,gemini,pi}/CLAUDE.md` + upward walk `CLAUDE.md` / `AGENTS.md` с cwd в system prompt. `/claude-md` показывает что загрузилось. Mtime-cached. |
 | `smart-compact` | Мерджит `.pi/compact-hints.md` или `opus-pack.compactHints` с inline focus от built-in `/compact [focus]`. Сохраняет ключевой контекст при compact. |
 | `log-tail` | `log_tail` / `log_kill` / `log_ps` tools + `/bg` picker. Pi-native long-running tasks: модель detach'ит bash в `/tmp/pi-bg-<slug>.{log,pid}`, расширение читает/убивает. `watch: true` пушит новые строки на каждый turn. Footer: `bg:N`. |
 | `edit-log` | `/edit-log` — on-demand история edit/write операций за сессию. Ничего не инжектит в system prompt, только по запросу. |
-| `file-commands` | Грузит `*.md` slash-команды с YAML frontmatter из `~/.{claude,pi}/commands` и `<cwd>/.{claude,pi}/commands`. Поддиректории становятся `plugin:name` namespaces. Подстановка `$ARGS` / `$1..$9`. CC-формат команд работает без изменений. |
 | `deferred-tools` | Feature-flagged (`opus-pack.deferredTools.enabled`). Прунит активный tool list на каждый turn, прячет MCP tools за `tool_search` / `tool_load` прокси. Экономит prompt-токены когда MCP большой. |
 
 #### Dev loop
@@ -216,7 +221,7 @@ Pack состоит из трёх слоёв:
 }
 ```
 
-Свои хуки просто дописывай в массивы `hooks` в формате Claude Code; `hook-bridge` подхватит через `/reload` без рестарта.
+Свои хуки просто дописывай в массивы `hooks` в формате Claude Code; `cc-bridge.hooks` подхватит через `/reload` без рестарта. Для file-based hooks кидай `*.md` или `*.sh` в `~/.pi/agent/hooks/` или `<cwd>/.pi/hooks/` с frontmatter `event:` и опциональным `matcher:`.
 
 ### Как выключить расширение
 

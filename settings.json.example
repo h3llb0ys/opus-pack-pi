@@ -2,7 +2,7 @@
   "_comment": "Reference. install.sh merges ONLY hooks, opus-pack, packages — never overwrites unrelated keys. MCP servers live in mcp.json.example (read by pi-mcp-adapter).",
 
   "hooks": {
-    "_comment": "1:1 Claude Code format. hook-bridge.ts reads this block. You can copy entries from ~/.claude/settings.json.",
+    "_comment": "1:1 Claude Code format. cc-bridge.hooks reads this block (or drop *.md into ~/.pi/agent/hooks/). You can copy entries from ~/.claude/settings.json.",
     "PreToolUse": [],
     "PostToolUse": [],
     "SessionStart": [],

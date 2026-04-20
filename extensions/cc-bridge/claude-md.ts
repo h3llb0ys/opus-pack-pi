@@ -1,20 +1,27 @@
 /**
- * claude-md-loader — auto-load CLAUDE.md / AGENTS.md convention files.
+ * cc-bridge/claude-md — auto-load CLAUDE.md / AGENTS.md convention files.
  *
- * CC-compat pattern: walk upward from cwd collecting CLAUDE.md and AGENTS.md,
- * merge them into the system prompt in priority order (global → walk → project
- * local). Files are mtime-cached so reading cost per turn stays zero for
- * stable trees.
+ * Two passes merge into the system prompt in ascending priority:
+ *   1. Global: ~/.claude/CLAUDE.md, ~/.codex/AGENTS.md, ~/.gemini/AGENTS.md,
+ *      ~/.pi/AGENTS.md (+ XDG fallback). Uses findVendorResources for the
+ *      four per-vendor files, but each vendor has its own filename so we
+ *      keep the explicit list rather than stuffing it through a helper.
+ *   2. Project walk: walk from cwd up to $HOME collecting CLAUDE.md /
+ *      AGENTS.md at every level. Farthest ancestor first → project-local
+ *      section wins on merge.
  *
- * Order appended to systemPrompt (each wrapped in XML for traceability):
- *   pi-default → APPEND_SYSTEM.md (pi-native) → this loader's merge → skills
+ * Files are mtime-cached so stable trees cost zero reads per turn.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
-import { isExtensionDisabled, loadOpusPackSection } from "../lib/settings.js";
+import { isExtensionDisabled, loadOpusPackSection } from "../../lib/settings.js";
+import type { CcBridgeState } from "./state.js";
+
+const TOGGLE_KEY = "cc-bridge.claude-md";
+const LEGACY_TOGGLE_KEY = "claude-md-loader";
 
 interface LoaderConfig {
 	enabled: boolean;
@@ -56,11 +63,9 @@ const readCached = (path: string): string | null => {
 };
 
 const findGlobalFiles = (): string[] => {
-	const found: string[] = [];
 	const home = homedir();
-	// CC-style + OpenAI Codex / Gemini CLI / pi — each vendor keeps its own
-	// conventions file under ~/.<tool>/. We merge all so provider swaps don't
-	// lose the guidance.
+	// Per-vendor conventions files — each vendor has its own filename so a
+	// findVendorResources() call wouldn't fit cleanly. Inline list stays small.
 	const candidates = [
 		join(home, ".claude", "CLAUDE.md"),
 		join(home, ".codex", "AGENTS.md"),
@@ -68,22 +73,17 @@ const findGlobalFiles = (): string[] => {
 		join(home, ".pi", "AGENTS.md"),
 		join(process.env.XDG_CONFIG_HOME ?? join(home, ".config"), "AGENTS.md"),
 	];
-	for (const p of candidates) {
-		if (existsSync(p)) found.push(p);
-	}
-	return found;
+	return candidates.filter((p) => existsSync(p));
 };
 
 const findWalkFiles = (cwd: string): string[] => {
-	// Walk from cwd up to HOME (or /) collecting CLAUDE.md / AGENTS.md.
-	// Order: farthest ancestor first, cwd last → project-local wins on merge.
 	const stopAt = resolve(homedir());
 	let dir = resolve(cwd);
 	const chain: string[] = [];
 	const seen = new Set<string>();
 	while (dir && !seen.has(dir)) {
 		seen.add(dir);
-		chain.unshift(dir); // unshift so root comes first
+		chain.unshift(dir); // root first, cwd last → project wins on merge
 		if (dir === stopAt || dir === "/") break;
 		const parent = dirname(dir);
 		if (parent === dir) break;
@@ -99,13 +99,21 @@ const findWalkFiles = (cwd: string): string[] => {
 	return out;
 };
 
-const buildMerged = (cwd: string, cfg: LoaderConfig): string => {
+interface BuildResult {
+	merged: string;
+	files: Array<{ path: string; bytes: number }>;
+	totalChars: number;
+	maxTotalChars: number;
+}
+
+const buildMerged = (cwd: string, cfg: LoaderConfig): BuildResult => {
 	const paths: string[] = [];
 	if (cfg.includeGlobal) paths.push(...findGlobalFiles());
 	if (cfg.includeWalk) paths.push(...findWalkFiles(cwd));
 
 	const seen = new Set<string>();
 	const sections: string[] = [];
+	const files: Array<{ path: string; bytes: number }> = [];
 	let totalChars = 0;
 	for (const raw of paths) {
 		const p = isAbsolute(raw) ? raw : resolve(cwd, raw);
@@ -119,48 +127,36 @@ const buildMerged = (cwd: string, cfg: LoaderConfig): string => {
 		const section = `<${tag} path="${p}">\n${trimmed}\n</${tag}>`;
 		if (totalChars + section.length > cfg.maxTotalChars) {
 			sections.push(`<${tag} path="${p}" truncated="true">[skipped: would exceed maxTotalChars ${cfg.maxTotalChars}]</${tag}>`);
+			files.push({ path: p, bytes: 0 });
 			continue;
 		}
 		sections.push(section);
+		files.push({ path: p, bytes: section.length });
 		totalChars += section.length;
 	}
-	return sections.join("\n\n");
+	return { merged: sections.join("\n\n"), files, totalChars, maxTotalChars: cfg.maxTotalChars };
 };
 
-export default function (pi: ExtensionAPI) {
-	if (isExtensionDisabled("claude-md-loader")) return;
+export default function register(pi: ExtensionAPI, state: CcBridgeState): void {
+	if (isExtensionDisabled(TOGGLE_KEY) || isExtensionDisabled(LEGACY_TOGGLE_KEY)) {
+		state.claudeMd = { enabled: false, files: [], totalChars: 0, maxTotalChars: 0 };
+		return;
+	}
+
 	pi.on("before_agent_start", (event, ctx) => {
 		const cfg = loadSettingsConfig();
-		if (!cfg.enabled) return;
-		const merged = buildMerged(ctx.cwd, cfg);
-		if (!merged) return;
-		return { systemPrompt: `${event.systemPrompt}\n\n${merged}\n` };
-	});
-
-	pi.registerCommand("claude-md", {
-		description: "List loaded CLAUDE.md / AGENTS.md files and their sizes",
-		handler: async (_args, ctx: ExtensionContext) => {
-			const cfg = loadSettingsConfig();
-			const paths: string[] = [];
-			if (cfg.includeGlobal) paths.push(...findGlobalFiles());
-			if (cfg.includeWalk) paths.push(...findWalkFiles(ctx.cwd));
-			const seen = new Set<string>();
-			const lines = [`═ claude-md loader (enabled=${cfg.enabled}) ═`];
-			if (paths.length === 0) {
-				lines.push("(no CLAUDE.md or AGENTS.md files found)");
-			} else {
-				for (const p of paths) {
-					if (seen.has(p)) continue;
-					seen.add(p);
-					try {
-						const stat = statSync(p);
-						lines.push(`  ${p}  (${stat.size}B)`);
-					} catch {
-						lines.push(`  ${p}  [unreadable]`);
-					}
-				}
-			}
-			ctx.ui.notify(lines.join("\n"), "info");
-		},
+		if (!cfg.enabled) {
+			state.claudeMd = { enabled: false, files: [], totalChars: 0, maxTotalChars: cfg.maxTotalChars };
+			return;
+		}
+		const result = buildMerged(ctx.cwd, cfg);
+		state.claudeMd = {
+			enabled: true,
+			files: result.files,
+			totalChars: result.totalChars,
+			maxTotalChars: result.maxTotalChars,
+		};
+		if (!result.merged) return;
+		return { systemPrompt: `${event.systemPrompt}\n\n${result.merged}\n` };
 	});
 }

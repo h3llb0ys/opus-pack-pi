@@ -66,7 +66,7 @@
 
 - Global roots: `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, `~/.gemini/AGENTS.md`, `~/.pi/AGENTS.md`. Project-level `./CLAUDE.md` / `./AGENTS.md` override the globals.
 - Upward walk from `cwd` to `$HOME` merges every file found. Files nearest to `cwd` have the highest priority.
-- `/claude-md` prints what got loaded.
+- `/cc-bridge status` prints the loaded CLAUDE.md / AGENTS.md files with their sizes (alongside active skills / commands / hooks).
 - `maxTotalChars` in settings (default 20000) caps the injection so it doesn't blow up the system prompt.
 
 ### Session navigation
