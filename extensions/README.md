@@ -102,14 +102,6 @@ OS notification (macOS / Linux) when an agent run completes. Suppressed for runs
 
 Auto-summary on agent exit when the run did ≥ 3 tool calls: files edited, commands run, errors encountered.
 
-### `cost.ts`
-
-Token-usage dashboard.
-
-- **Slash:** `/cost`.
-- **Output:** current session + today + past 7 days with per-day breakdown.
-- **Pricing:** shows `—` when unknown (non-Anthropic providers).
-
 ### `list-resources.ts`
 
 Runtime resource listings.
