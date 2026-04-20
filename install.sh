@@ -174,9 +174,28 @@ if [ -f "$REPO_DIR/mcp.json.example" ]; then
 	ok "mcp.json merged (for pi-mcp-adapter): $MCP_JSON"
 fi
 
-# 6. APPEND_SYSTEM.md
+# 6. APPEND_SYSTEM.md — install or refresh in place.
+#    The repo's APPEND_SYSTEM.md already carries the START/END markers, so we
+#    can compare the existing block against it and either skip (identical),
+#    replace it atomically (drift), or append for a first install.
 if [ -f "$APPEND_SYS" ] && grep -qF "Opus Pack rules START" "$APPEND_SYS"; then
-	log skip "$APPEND_SYS already contains Opus Pack rules"
+	current_block="$(awk '/Opus Pack rules START/,/Opus Pack rules END/' "$APPEND_SYS")"
+	repo_block="$(cat "$REPO_DIR/APPEND_SYSTEM.md")"
+	if [ "$current_block" = "$repo_block" ]; then
+		log skip "$APPEND_SYS Opus Pack rules already up to date"
+	else
+		tmp="$APPEND_SYS.tmp.$$"
+		# Stream the file out, dropping the existing block on the way; write
+		# the fresh version of the block exactly once when the start marker
+		# is encountered. Preserves everything outside the markers verbatim.
+		awk -v repo_file="$REPO_DIR/APPEND_SYSTEM.md" '
+			/Opus Pack rules START/ { in_block = 1; while ((getline line < repo_file) > 0) print line; close(repo_file); next }
+			/Opus Pack rules END/   { in_block = 0; next }
+			!in_block               { print }
+		' "$APPEND_SYS" > "$tmp"
+		mv "$tmp" "$APPEND_SYS"
+		ok "$APPEND_SYS Opus Pack rules refreshed"
+	fi
 else
 	[ -f "$APPEND_SYS" ] && printf "\n" >> "$APPEND_SYS"
 	cat "$REPO_DIR/APPEND_SYSTEM.md" >> "$APPEND_SYS"
