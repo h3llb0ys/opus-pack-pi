@@ -143,7 +143,10 @@ export default function (pi: ExtensionAPI) {
 		const target = items.find((t) => t.id === id);
 		if (!target) throw new Error(`todo #${id} not found`);
 		if (target.status === "done") {
-			throw new Error(`todo #${id} already done — use 'pending' to re-open`);
+			// No re-open path is intentional: re-opening a done task would
+			// muddle the audit trail plan-mode persists into done_steps.
+			// If the work needs to happen again, add a fresh todo for it.
+			throw new Error(`todo #${id} already done — add a new todo for the rework instead of reopening it.`);
 		}
 		// Single-active invariant: demote any other in_progress back to pending.
 		for (const t of items) {
