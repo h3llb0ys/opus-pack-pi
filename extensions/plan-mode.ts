@@ -223,7 +223,7 @@ function extractPlanSteps(message: string): string[] {
 	return steps;
 }
 
-interface TodoChangedItem { status: "pending" | "in_progress" | "done"; text: string }
+interface TodoChangedItem { status: "pending" | "in_progress" | "dispatched" | "done"; text: string }
 
 export default function (pi: ExtensionAPI) {
 	if (isExtensionDisabled("plan-mode")) return;
@@ -549,10 +549,29 @@ Create a numbered plan under a "Plan:" header. Do NOT make changes.`,
 				.map((t, i) => ({ step: i + 1, text: t.text, status: t.status }))
 				.filter((t) => t.status !== "done");
 			if (remaining.length === 0) return;
+
+			// Group by status so the model sees parallel-in-flight work
+			// distinctly from local work and from untouched pending steps.
+			// The hint at the bottom explains how to fan out independent
+			// pending steps via dispatch + subagent.
+			const fmt = (rows: typeof remaining) =>
+				rows.map((t) => `  #${t.step} ${t.text}`).join("\n");
+			const sections: string[] = [];
+			const inProg = remaining.filter((t) => t.status === "in_progress");
+			const dispatched = remaining.filter((t) => t.status === "dispatched");
+			const pending = remaining.filter((t) => t.status === "pending");
+			if (inProg.length > 0) sections.push(`In progress:\n${fmt(inProg)}`);
+			if (dispatched.length > 0) sections.push(`Dispatched (delegated to subagents):\n${fmt(dispatched)}`);
+			if (pending.length > 0) sections.push(`Pending:\n${fmt(pending)}`);
+
 			return {
 				message: {
 					customType: "plan-execution-context",
-					content: `[EXECUTING PLAN]\nRemaining:\n${remaining.map((t) => `${t.step}. ${t.text}`).join("\n")}\nDrive progress with the todo tool: todo start <id> before each step, todo done <id> when finished.`,
+					content:
+						`[EXECUTING PLAN]\n${sections.join("\n\n")}\n\n` +
+						"Drive progress with the todo tool: `todo start <id>` before working on a step, `todo done <id>` (or `ids:[...]`) when finished. " +
+						"Independent pending steps can run in parallel: `todo dispatch ids:[...]` then `subagent({tasks:[...], concurrency:N})`; mark them done when results return. " +
+						"If a dispatched subagent fails, `todo start id:<N>` flips it back so you take it over locally.",
 					display: false,
 				},
 			};
@@ -642,10 +661,19 @@ Create a numbered plan under a "Plan:" header. Do NOT make changes.`,
 			if (Array.isArray(restored)) {
 				lastTodoItems = restored
 					.filter((t): t is { status: string; text: string } => typeof t.text === "string" && typeof t.status === "string")
-					.map((t) => ({
-						status: (t.status === "done" || t.status === "in_progress" ? t.status : "pending") as TodoChangedItem["status"],
-						text: t.text,
-					}));
+					.map((t) => {
+						// Whitelist must include every Status the todo
+						// extension can write — otherwise resume silently
+						// downgrades the value (the original bug was
+						// `dispatched` collapsing to `pending`, leading
+						// the execution-context to mis-categorise items
+						// the model had already delegated to subagents).
+						const isKnown = t.status === "done"
+							|| t.status === "in_progress"
+							|| t.status === "dispatched";
+						const status = (isKnown ? t.status : "pending") as TodoChangedItem["status"];
+						return { status, text: t.text };
+					});
 				// Resume safety: if the plan was fully done in the previous
 				// session but the completion announcement never landed,
 				// queue it so the next before_agent_start finalizes cleanly.
