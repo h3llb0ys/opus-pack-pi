@@ -154,6 +154,26 @@ if [ ! -d "$REPO_DIR/node_modules/minimatch" ]; then
     (cd "$REPO_DIR" && npm install --omit=dev) 2>/dev/null || warn "npm install failed — permissions extension may not load"
 fi
 
+# 7b. Agent profiles. pi-subagents discovers agents from ~/.pi/agent/agents/
+#     (user scope, overrides its own bundled roster). Copy each bundled .md
+#     with cp -n so user edits survive re-runs; never clobber.
+AGENTS_SRC="$REPO_DIR/agents"
+AGENTS_DST="$PI_DIR/agents"
+if [ -d "$AGENTS_SRC" ]; then
+	mkdir -p "$AGENTS_DST"
+	for src in "$AGENTS_SRC"/*.md; do
+		[ -f "$src" ] || continue
+		name="$(basename "$src")"
+		dst="$AGENTS_DST/$name"
+		if [ -f "$dst" ]; then
+			log skip "agent $name (already in $AGENTS_DST)"
+		else
+			cp "$src" "$dst"
+			ok "agent $name → $AGENTS_DST"
+		fi
+	done
+fi
+
 # 8. lean-ctx (token-optimising shell/read layer). Installs a single Rust
 #    binary. Skip entirely with OPUS_PACK_SKIP_LEAN_CTX=1. Tries brew, then
 #    cargo, then the upstream install script, then gives up with a warning
