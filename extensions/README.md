@@ -54,7 +54,7 @@ Read-only exploration mode. Produce a numbered plan, call `exit_plan_mode(plan, 
 
 Task list with `in_progress` / `pending` / `done` states and a single-active invariant (like Claude Code's `TodoWrite`).
 
-- **Tool:** `todo(action: add|start|done|list|clear, text?, id?)`.
+- **Tool:** `todo(action: add|start|done|list|clear, text?, texts?, id?, ids?)`. `add` accepts a single `text` or a batch via `texts: string[]`; `done` accepts a single `id` or a batch via `ids: string[]` (drops a closing wave of completed steps in one call). `start` keeps the single-active invariant and rejects batches.
 - **Slash:** `/todo`.
 - **UI:** widget above the prompt + footer badge.
 

@@ -226,38 +226,63 @@ export default function (pi: ExtensionAPI) {
 		label: "Todo",
 		description:
 			"Multi-step task list with an in_progress cursor. Use BEFORE editing for 3+ step work. " +
-			"Flow: add items → start one → do work → done → start next. Only ONE task may be in_progress at a time.",
-		promptSnippet: "todo add/start/done/clear — plan multi-step work, single in_progress task",
+			"Flow: add items → start one → do work → done → start next. Only ONE task may be in_progress at a time. " +
+			"Both `add` and `done` accept a batch (`texts: string[]` / `ids: string[]`) so the entire plan or a closing wave of completed steps can land in a single tool call.",
+		promptSnippet: "todo add/start/done/clear — plan multi-step work, single in_progress task; add+done accept batches",
 		promptGuidelines: [
-			"Call todo add for each step BEFORE editing code when the task has 3+ steps.",
+			"When you already know all the steps, call `todo add` ONCE with `texts: [...]` to drop the whole plan in one shot — don't loop one-add-per-step.",
 			"Keep exactly one task in_progress at a time — start the next before you work on it.",
-			"Mark tasks done as you finish them; don't batch.",
+			"Mark a task done as soon as you finish it; if several adjacent steps wrap up together, `todo done` with `ids: [...]` flushes them in one call.",
 		],
 		parameters: Type.Object({
 			action: StringEnum(["add", "start", "done", "list", "clear"] as const),
-			text: Type.Optional(Type.String({ description: "Task text (for add)" })),
-			id: Type.Optional(Type.String({ description: "Task ID (for start/done)" })),
+			text: Type.Optional(Type.String({ description: "Single task text (for add). Use 'texts' for a batch." })),
+			texts: Type.Optional(Type.Array(Type.String(), {
+				description: "Batch task texts (for add). Adds every entry in order, sharing one tool call. Prefer this when planning 3+ steps upfront.",
+			})),
+			id: Type.Optional(Type.String({ description: "Single task ID (for start/done). Use 'ids' to mark multiple done in one call." })),
+			ids: Type.Optional(Type.Array(Type.String(), {
+				description: "Batch task IDs for `done` only — marks every listed task as done in one call. `start` keeps the single-active invariant and rejects batches.",
+			})),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			switch (params.action) {
 				case "add": {
-					if (!params.text) throw new Error("todo add requires 'text'");
+					const inputs = (params.texts && params.texts.length > 0) ? params.texts : (params.text ? [params.text] : []);
+					if (inputs.length === 0) throw new Error("todo add requires 'text' or non-empty 'texts'");
 					// Fresh plan: wipe if everything was done.
 					if (items.length > 0 && items.every((t) => t.status === "done")) {
 						items = [];
 						nextId = 1;
 					}
-					const entry: TodoEntry = { id: String(nextId++), text: params.text, status: "pending" };
-					items.push(entry);
+					const added: TodoEntry[] = [];
+					for (const raw of inputs) {
+						const trimmed = String(raw).trim();
+						if (!trimmed) continue;
+						const entry: TodoEntry = { id: String(nextId++), text: trimmed, status: "pending" };
+						items.push(entry);
+						added.push(entry);
+					}
+					if (added.length === 0) throw new Error("todo add: every text was blank");
 					persist();
 					renderWidget(ctx, items);
 					emitChanged();
+					if (added.length === 1) {
+						return {
+							content: [{ type: "text", text: `Added #${added[0].id} (pending): ${added[0].text}` }],
+							details: { items },
+						};
+					}
+					const lines = added.map((e) => `  #${e.id} ${e.text}`).join("\n");
 					return {
-						content: [{ type: "text", text: `Added #${entry.id} (pending): ${entry.text}` }],
+						content: [{ type: "text", text: `Added ${added.length} todos:\n${lines}` }],
 						details: { items },
 					};
 				}
 				case "start": {
+					if (params.ids && params.ids.length > 0) {
+						throw new Error("todo start does not accept 'ids' — only one task may be in_progress at a time");
+					}
 					if (!params.id) throw new Error("todo start requires 'id'");
 					const target = startInternal(params.id);
 					persist();
@@ -269,17 +294,41 @@ export default function (pi: ExtensionAPI) {
 					};
 				}
 				case "done": {
-					if (!params.id) throw new Error("todo done requires 'id'");
-					const target = items.find((t) => t.id === params.id);
-					if (!target) throw new Error(`todo #${params.id} not found`);
-					target.status = "done";
+					const ids = (params.ids && params.ids.length > 0) ? params.ids : (params.id ? [params.id] : []);
+					if (ids.length === 0) throw new Error("todo done requires 'id' or non-empty 'ids'");
+					const completed: TodoEntry[] = [];
+					const skipped: Array<{ id: string; reason: string }> = [];
+					for (const id of ids) {
+						const target = items.find((t) => t.id === id);
+						if (!target) {
+							skipped.push({ id, reason: "not found" });
+							continue;
+						}
+						if (target.status === "done") {
+							skipped.push({ id, reason: "already done" });
+							continue;
+						}
+						target.status = "done";
+						completed.push(target);
+					}
+					if (completed.length === 0 && skipped.length > 0) {
+						throw new Error(`todo done: ${skipped.map((s) => `#${s.id} (${s.reason})`).join(", ")}`);
+					}
 					persist();
 					renderWidget(ctx, items);
 					emitChanged();
 					const next = items.find((t) => t.status === "pending");
 					const suffix = next ? ` Next pending: #${next.id} — ${next.text}. Call todo start ${next.id}.` : " All done!";
+					if (completed.length === 1 && skipped.length === 0) {
+						return {
+							content: [{ type: "text", text: `Done #${completed[0].id}: ${completed[0].text}.${suffix}` }],
+							details: { items },
+						};
+					}
+					const doneLine = `Done ${completed.length}: ${completed.map((e) => `#${e.id}`).join(", ")}.`;
+					const skipLine = skipped.length > 0 ? ` Skipped: ${skipped.map((s) => `#${s.id} (${s.reason})`).join(", ")}.` : "";
 					return {
-						content: [{ type: "text", text: `Done #${target.id}: ${target.text}.${suffix}` }],
+						content: [{ type: "text", text: `${doneLine}${skipLine}${suffix}` }],
 						details: { items },
 					};
 				}
