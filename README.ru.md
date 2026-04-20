@@ -15,7 +15,6 @@ Opinionated bundle расширений для [pi-coding-agent](https://github.
 | `todo.ts` | `todo` tool (add/start/done/clear) + `/todo` command — task list с `in_progress` состоянием и single-active invariant (как CC TodoWrite). Widget + status bar. |
 | `log-tail.ts` | `log_tail` / `log_kill` / `log_ps` tools + `/bg` — pi-native long-running tasks. Модель detach'ит bash в `/tmp/pi-bg-<slug>.{log,pid}`, extension читает/убивает. Status bar: `bg:N`. Watch-mode пушит новые строки на каждый turn. |
 | `diff.ts` | `/diff` — обзор изменений агента: `git diff HEAD --stat` + интерактивный пикер файла с полным diff. |
-| `rewind.ts` | `/rewind` — undo/rollback: discard changes, undo last commit, reset к произвольному коммиту или stash. |
 | `cost.ts` | `/cost` — дашборд token usage: текущая сессия, за сегодня, за 7 дней с breakdown по дням. |
 | `context.ts` | `/context` — что жрёт контекст: breakdown по типам (system/user/tool), топ tools, топ файлов. |
 | `session-summary.ts` | Авто-резюме при завершении agent'а (если ≥3 tool calls): сколько файлов изменено, команд запущено, ошибок. |
@@ -37,7 +36,6 @@ Opinionated bundle расширений для [pi-coding-agent](https://github.
 
 ### Vendored extensions (из `pi-mono/examples/extensions/`)
 
-- `git-checkpoint.ts` — авто-snapshot перед write/edit/bash.
 - `auto-commit-on-exit.ts` — snapshot при выходе из pi.
 - `dirty-repo-guard.ts` — warn при старте на грязном working tree.
 
@@ -135,7 +133,7 @@ MCP-серверы живут отдельно в `~/.pi/agent/mcp.json` (фор
 {
   "packages": [{
     "source": "/path/to/opus-pack-pi",
-    "extensions": ["extensions/*.ts", "!extensions/git-checkpoint.ts"]
+    "extensions": ["extensions/*.ts", "!extensions/edit-log.ts"]
   }]
 }
 ```

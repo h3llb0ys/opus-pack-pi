@@ -70,9 +70,7 @@ export const OPUS_EXTENSIONS: ExtensionEntry[] = [
 
 	// dev (git helpers)
 	{ name: "auto-commit-on-exit", category: "dev", description: "Snapshot commit on pi exit" },
-	{ name: "git-checkpoint", category: "dev", description: "Auto-snapshot before write/edit/bash" },
 	{ name: "diff", category: "dev", description: "/diff — review agent changes interactively" },
-	{ name: "rewind", category: "dev", description: "/rewind — undo commits, stash, reset" },
 ];
 
 const CATEGORY_ORDER: Category[] = ["safety", "tasks", "ui", "integrations", "dev"];

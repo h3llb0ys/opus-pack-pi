@@ -63,6 +63,11 @@ PACKAGES=(
 	# + agent-powered review for suspicious cases. Third defense-in-depth
 	# layer alongside safe-deny (path) and pi-lens (write content).
 	"git:github.com/acarerdinc/pi-secret-guard"
+	# /rewind — per-turn git-ref checkpoints with conversation state rollback,
+	# diff preview, redo stack, branch safety, safe-restore. Replaces our
+	# rewind + git-checkpoint extensions (strictly richer, automatic
+	# checkpointing on every turn). Esc+Esc for files-only quick rewind.
+	"git:github.com/arpagon/pi-rewind"
 )
 
 # Anthropic-only: Claude Max subscription proxy. Skipped unless explicitly requested

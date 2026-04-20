@@ -17,7 +17,6 @@ The installer also pulls selected community packages through native `pi install`
 | `todo.ts` | `todo` tool (add/start/done/clear) + `/todo` command. Task list with `in_progress` state and single-active invariant (mirrors CC `TodoWrite`). Widget + status-bar badge. |
 | `log-tail.ts` | `log_tail` / `log_kill` / `log_ps` tools + `/bg` picker — pi-native long-running tasks. The model detaches bash to `/tmp/pi-bg-<slug>.{log,pid}`; the extension reads and kills. `watch: true` pushes new lines back on every turn. Status bar: `bg:N`. |
 | `diff.ts` | `/diff` — view the agent's changes: `git diff HEAD --stat` + interactive file picker with full diff. |
-| `rewind.ts` | `/rewind` — undo/rollback: discard changes, undo last commit, reset to an arbitrary commit, or stash. |
 | `cost.ts` | `/cost` — token-usage dashboard: current session, today, past 7 days with per-day breakdown. Shows `—` when pricing is unknown (non-Anthropic providers). |
 | `context.ts` | `/context` — what's consuming context: breakdown by type (system/user/tool), top tools, top files. |
 | `session-summary.ts` | Auto-summary on agent exit (≥3 tool calls): files edited, commands run, errors encountered. |
@@ -41,7 +40,6 @@ The installer also pulls selected community packages through native `pi install`
 
 ### Vendored extensions (from `pi-mono/examples/extensions/`)
 
-- `git-checkpoint.ts` — auto-snapshot before write/edit/bash.
 - `auto-commit-on-exit.ts` — snapshot on pi exit.
 - `dirty-repo-guard.ts` — warns when starting on a dirty working tree.
 
@@ -145,7 +143,7 @@ To **disable** a pack extension, filter in `settings.json`:
 {
   "packages": [{
     "source": "/path/to/opus-pack-pi",
-    "extensions": ["extensions/*.ts", "!extensions/git-checkpoint.ts"]
+    "extensions": ["extensions/*.ts", "!extensions/edit-log.ts"]
   }]
 }
 ```
