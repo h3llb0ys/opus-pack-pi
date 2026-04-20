@@ -86,7 +86,7 @@ const isModifyingBash = (cmd: string): boolean =>
 // dispatched) task we allow before nudging the model. Set to 2 so a
 // one-shot edit stays silent while a pattern of repeated modifications
 // (the actual signal of a multi-step run) triggers a single reminder.
-const MODIFYING_CALLS_BEFORE_START_NAG = 2;
+const MODIFYING_CALLS_BEFORE_NAG = 2;
 
 // Number of consecutive `before_agent_start` ticks the same set of
 // dispatched ids must persist before the orphan-dispatched nag fires.
@@ -101,8 +101,8 @@ export default function (pi: ExtensionAPI) {
 	let nextId = 1;
 
 	// Enforcement state per agent run.
-	let hasNaggedInProgress = false;
-	let modifyingCallsWithoutInProgress = 0;
+	let hasNaggedActivity = false;
+	let modifyingCallsWithoutActive = 0;
 	// Orphan-dispatched detection: track the dispatched-set across turns.
 	let dispatchedSnapshotIds: Set<string> = new Set();
 	let dispatchedStaleTurns = 0;
@@ -123,8 +123,8 @@ export default function (pi: ExtensionAPI) {
 	};
 
 	const resetEnforcement = () => {
-		hasNaggedInProgress = false;
-		modifyingCallsWithoutInProgress = 0;
+		hasNaggedActivity = false;
+		modifyingCallsWithoutActive = 0;
 		dispatchedSnapshotIds = new Set();
 		dispatchedStaleTurns = 0;
 		hasNaggedOrphaned = false;
@@ -192,8 +192,8 @@ export default function (pi: ExtensionAPI) {
 		// starts over against the new list. Orphan tracker auto-resets
 		// on the next before_agent_start tick because the dispatched-set
 		// will differ from the prior snapshot (empty for a fresh plan).
-		hasNaggedInProgress = false;
-		modifyingCallsWithoutInProgress = 0;
+		hasNaggedActivity = false;
+		modifyingCallsWithoutActive = 0;
 		persist();
 		rerender();
 		emitChanged();
@@ -248,15 +248,15 @@ export default function (pi: ExtensionAPI) {
 		const hasActive = items.some((t) => t.status === "in_progress" || t.status === "dispatched");
 		const hasOpenWork = items.some((t) => t.status !== "done");
 		if (hasActive) {
-			modifyingCallsWithoutInProgress = 0;
+			modifyingCallsWithoutActive = 0;
 			return;
 		}
 
-		modifyingCallsWithoutInProgress++;
-		if (hasNaggedInProgress) return;
-		if (modifyingCallsWithoutInProgress < MODIFYING_CALLS_BEFORE_START_NAG) return;
+		modifyingCallsWithoutActive++;
+		if (hasNaggedActivity) return;
+		if (modifyingCallsWithoutActive < MODIFYING_CALLS_BEFORE_NAG) return;
 
-		hasNaggedInProgress = true;
+		hasNaggedActivity = true;
 		const msg = hasOpenWork
 			? "⚠ You are writing code but no task is in_progress. Call `todo start <id>` on the current step."
 			: "⚠ You have made several modifications without a plan. If this is a multi-step task (3+ steps), call `todo add` for each step, then `todo start <id>` on the first.";
