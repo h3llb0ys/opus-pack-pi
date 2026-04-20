@@ -68,6 +68,11 @@ PACKAGES=(
 	# rewind + git-checkpoint extensions (strictly richer, automatic
 	# checkpointing on every turn). Esc+Esc for files-only quick rewind.
 	"git:github.com/arpagon/pi-rewind"
+	# Agentic context management — /acm toggle, context_tag / context_log /
+	# context_checkout (git-like operations). /context dashboard replaces
+	# our passive token-breakdown view and adds active context ops
+	# (tag milestones, checkout into compressed summary).
+	"git:github.com/ttttmr/pi-context"
 )
 
 # Anthropic-only: Claude Max subscription proxy. Skipped unless explicitly requested

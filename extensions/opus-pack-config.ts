@@ -53,7 +53,6 @@ export const OPUS_EXTENSIONS: ExtensionEntry[] = [
 	{ name: "mcp-compress", category: "ui", description: "Collapse verbose MCP tool results to one line" },
 	{ name: "desktop-notify", category: "ui", description: "OS notification on long agent completion" },
 	{ name: "session-summary", category: "ui", description: "Post-turn summary of files changed, commands, errors" },
-	{ name: "context", category: "ui", description: "/context dashboard — what eats the context window" },
 	{ name: "cost", category: "ui", description: "/cost dashboard — tokens + price breakdown" },
 	{ name: "list-resources", category: "ui", description: "/skills, /extensions, /prompts slashes" },
 
