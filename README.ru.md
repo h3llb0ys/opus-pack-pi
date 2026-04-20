@@ -78,8 +78,8 @@ Pack состоит из трёх слоёв:
 | **Safety** | `safe-deny`, `permissions`, `dirty-repo-guard`, `iteration-guard` |
 | **Tasks & routing** | `plan-mode`, `todo`, `model-router` |
 | **UI & reporting** | `status`, `bash-progress`, `mcp-compress`, `desktop-notify`, `session-summary`, `list-resources` |
-| **Integrations** | `cc-bridge/` (skills, commands, claude-md, hooks), `smart-compact`, `log-tail`, `edit-log`, `pi-search`, `deferred-tools` |
-| **Dev loop** | `diff`, `auto-commit-on-exit` |
+| **Integrations** | `cc-bridge/` (skills, commands, claude-md, hooks), `smart-compact`, `log-tail`, `pi-search`, `deferred-tools` |
+| **Dev loop** | `diff` |
 | **Meta** | `opus-pack-config` |
 
 Highlights:
@@ -197,7 +197,7 @@ Highlights:
 {
   "packages": [{
     "source": "/path/to/opus-pack-pi",
-    "extensions": ["extensions/*.ts", "!extensions/edit-log.ts"]
+    "extensions": ["extensions/*.ts", "!extensions/diff.ts"]
   }]
 }
 ```

@@ -145,13 +145,6 @@ Pi-native long-running background tasks.
 - **Watch mode:** `log_tail({watch: true})` pushes new lines back on every turn.
 - **Footer slot:** `bg:N` shows live task count.
 
-### `edit-log.ts`
-
-On-demand history of edit / write operations for the current session (file path → tool + time + first-new-line snippet).
-
-- **Slash:** `/edit-log`.
-- **Not injected** into the system prompt — output only when asked.
-
 ### `pi-search.ts`
 
 Discovery of community pi extensions.
@@ -177,10 +170,6 @@ Prunes the active tool list on every turn, hiding MCP tools behind `tool_search`
 Review agent changes interactively.
 
 - **Slash:** `/diff` — shows `git diff HEAD --stat` plus a file picker with the full per-file diff.
-
-### `auto-commit-on-exit.ts`
-
-Snapshot commit on pi exit. Catches uncommitted changes so a crashed session doesn't silently lose work.
 
 ---
 
@@ -209,7 +198,7 @@ Two options:
    {
      "packages": [{
        "source": "/path/to/opus-pack-pi",
-       "extensions": ["extensions/*.ts", "!extensions/edit-log.ts"]
+       "extensions": ["extensions/*.ts", "!extensions/diff.ts"]
      }]
    }
    ```

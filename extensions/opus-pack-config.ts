@@ -64,11 +64,9 @@ export const OPUS_EXTENSIONS: ExtensionEntry[] = [
 	{ name: "pi-search", category: "integrations", description: "/pi-search community extension discovery" },
 	{ name: "smart-compact", category: "integrations", description: "Merge compact-hints.md into /compact focus" },
 	{ name: "log-tail", category: "integrations", description: "log_tail/log_kill/log_ps + /bg picker" },
-	{ name: "edit-log", category: "integrations", description: "/edit-log — on-demand list of files edited this session" },
 	{ name: "deferred-tools", category: "integrations", description: "Lazy MCP tool schemas (tool_search + tool_load). Feature-flagged: opus-pack.deferredTools.enabled" },
 
 	// dev (git helpers)
-	{ name: "auto-commit-on-exit", category: "dev", description: "Snapshot commit on pi exit" },
 	{ name: "diff", category: "dev", description: "/diff — review agent changes interactively" },
 ];
 
