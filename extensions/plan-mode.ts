@@ -3,7 +3,14 @@
  *
  * /plan or Ctrl+Alt+P toggles plan mode (read-only tools only).
  * Agent creates numbered plan under "Plan:" header.
- * User chooses "Execute" → full tools restored, progress tracked via [DONE:n].
+ * User chooses "Execute" → full tools restored.
+ *
+ * Execution progress is owned by the `todo` extension: on plan approval
+ * plan-mode emits `opus-pack:todo:replace` with the parsed steps, and the
+ * model drives progress with the normal `todo done` tool. plan-mode
+ * listens to `opus-pack:todo:changed` and mirrors done-state into the
+ * persisted plan file's `done_steps` frontmatter so a future session can
+ * resume from disk.
  */
 
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
@@ -185,12 +192,6 @@ const isSegmentSafe = (seg: string): boolean => {
 	return false;
 };
 
-interface TodoItem {
-	step: number;
-	text: string;
-	completed: boolean;
-}
-
 function isSafeCommand(cmd: string): boolean {
 	if (HARD_BLOCK_PATTERNS.some((p) => p.test(cmd))) return false;
 	// Split on pipes and command chains; every segment must be read-only.
@@ -210,101 +211,80 @@ function getTextContent(msg: AssistantMessage): string {
 		.join("\n");
 }
 
-function extractTodoItems(message: string): TodoItem[] {
-	const items: TodoItem[] = [];
+function extractPlanSteps(message: string): string[] {
+	const steps: string[] = [];
 	const headerMatch = message.match(/\*{0,2}Plan:\*{0,2}\s*\n/i);
-	if (!headerMatch) return items;
+	if (!headerMatch) return steps;
 	const planSection = message.slice(message.indexOf(headerMatch[0]) + headerMatch[0].length);
 	for (const match of planSection.matchAll(/^\s*(\d+)[.)]\s+\*{0,2}([^*\n]+)/gm)) {
 		const text = match[2].trim().replace(/\*{1,2}$/, "").trim();
-		if (text.length > 5) {
-			items.push({ step: items.length + 1, text: text.slice(0, 80), completed: false });
-		}
-	}
-	return items;
-}
-
-function extractDoneSteps(message: string): number[] {
-	const steps: number[] = [];
-	for (const match of message.matchAll(/\[DONE:(\d+)\]/gi)) {
-		const s = Number(match[1]);
-		if (Number.isFinite(s)) steps.push(s);
+		if (text.length > 5) steps.push(text.slice(0, 80));
 	}
 	return steps;
 }
+
+interface TodoChangedItem { status: "pending" | "in_progress" | "done"; text: string }
 
 export default function (pi: ExtensionAPI) {
 	if (isExtensionDisabled("plan-mode")) return;
 	let planModeEnabled = false;
 	let executionMode = false;
-	let todoItems: TodoItem[] = [];
 	// Path to the .pi/plans/<slug>.md file currently driving execution. Set
 	// when exit_plan_mode persists and when /plan-resume picks an old plan up.
-	// Used to write done_steps back into the file as the model marks progress,
-	// so a future session can resume from the disk state even if the session
-	// entry is gone.
+	// Used to write done_steps back into the file as todo progresses, so a
+	// future session can resume from disk even if the session entry is gone.
 	let activePlanPath: string | null = null;
+	// Snapshot of the last todo list broadcast by the todo extension. Used
+	// by finalizePlan to know how many steps landed "done" for the closing
+	// message, and to compute done_steps for the plan-file writeback.
+	let lastTodoItems: TodoChangedItem[] = [];
 
-	const writebackProgress = (status?: PlanStatus) => {
-		if (!activePlanPath) return;
-		const done = todoItems.filter((t) => t.completed).map((t) => t.step);
-		updatePlanFile(activePlanPath, { done_steps: done, status });
-	};
-
-	pi.registerFlag("plan", { type: "boolean", description: "Start in plan mode", default: false });
-
-	// Broadcast plan-mode state on every change so other extensions (e.g.
-	// session-summary) can react without reaching back into this module.
 	const broadcastPlanState = () => {
 		pi.events.emit("opus-pack:plan-state", { active: planModeEnabled || executionMode });
 	};
 
+	const persist = () => {
+		pi.appendEntry("plan-mode", {
+			enabled: planModeEnabled,
+			executing: executionMode,
+			activePlanPath,
+		});
+	};
+
 	const updateStatus = (ctx: ExtensionContext) => {
 		broadcastPlanState();
-		if (executionMode && todoItems.length > 0) {
-			const done = todoItems.filter((t) => t.completed).length;
-			ctx.ui.setStatus("01-plan", ctx.ui.theme.fg("accent", `${done}/${todoItems.length}`));
-		} else if (planModeEnabled) {
-			// CC-style: accent-coloured pause + label + shortcut hint.
+		if (planModeEnabled) {
 			const label = ctx.ui.theme.fg("accent", "plan mode on") + " " + ctx.ui.theme.fg("muted", "(cmd+p)");
 			ctx.ui.setStatus("01-plan", label);
 		} else {
 			ctx.ui.setStatus("01-plan", undefined);
 		}
-		if (executionMode && todoItems.length > 0) {
-			ctx.ui.setWidget("plan-todos", todoItems.map((t) =>
-				t.completed
-					? ctx.ui.theme.fg("success", "■") + " " + ctx.ui.theme.fg("muted", ctx.ui.theme.strikethrough(t.text))
-					: ctx.ui.theme.fg("dim", "□") + " " + t.text,
-			));
-		} else {
-			ctx.ui.setWidget("plan-todos", undefined);
-		}
 	};
 
-	const persist = () => {
-		pi.appendEntry("plan-mode", { enabled: planModeEnabled, todos: todoItems, executing: executionMode });
+	const writebackProgress = (status?: PlanStatus) => {
+		if (!activePlanPath) return;
+		const done: number[] = [];
+		lastTodoItems.forEach((t, i) => { if (t.status === "done") done.push(i + 1); });
+		updatePlanFile(activePlanPath, { done_steps: done, status });
 	};
 
-	const finalizePlan = (ctx: ExtensionContext) => {
-		// Determine terminal status before we drop todos so the file reflects
-		// whether the plan completed naturally or was closed early.
-		const terminal: PlanStatus = todoItems.length > 0 && todoItems.every((t) => t.completed)
-			? "completed"
-			: "closed";
-		writebackProgress(terminal);
+	const finalizePlan = (ctx: ExtensionContext, terminal?: PlanStatus) => {
+		const total = lastTodoItems.length;
+		const completed = lastTodoItems.filter((t) => t.status === "done").length;
+		const status: PlanStatus = terminal ?? (total > 0 && completed === total ? "completed" : "closed");
+		writebackProgress(status);
 		executionMode = false;
-		todoItems = [];
 		activePlanPath = null;
 		pi.setActiveTools(NORMAL_MODE_TOOLS);
 		updateStatus(ctx);
 		persist();
+		return { total, completed };
 	};
 
 	const togglePlanMode = (ctx: ExtensionContext) => {
 		planModeEnabled = !planModeEnabled;
 		executionMode = false;
-		todoItems = [];
+		activePlanPath = null;
 		if (planModeEnabled) {
 			pi.setActiveTools(PLAN_MODE_TOOLS);
 			ctx.ui.notify(`Plan mode ON. Tools: ${PLAN_MODE_TOOLS.join(", ")}`, "info");
@@ -315,33 +295,39 @@ export default function (pi: ExtensionAPI) {
 		updateStatus(ctx);
 	};
 
+	// Keep snapshot of todo state + writeback to plan file as model progresses.
+	// Also detect "all done" → auto-finalize.
+	// No ctx here; finalization that needs ctx is deferred to agent_end /
+	// before_agent_start handlers.
+	let pendingCompletionAnnounce = false;
+	pi.events.on("opus-pack:todo:changed", (data) => {
+		const payload = data as { items?: TodoChangedItem[] } | undefined;
+		const items = Array.isArray(payload?.items) ? payload!.items : [];
+		lastTodoItems = items.map((t) => ({ status: t.status, text: t.text }));
+		if (!executionMode) return;
+		// Writeback even if nothing changed terminally — one-off write is cheap.
+		writebackProgress();
+		if (lastTodoItems.length > 0 && lastTodoItems.every((t) => t.status === "done")) {
+			pendingCompletionAnnounce = true;
+		}
+	});
+
+	pi.registerFlag("plan", { type: "boolean", description: "Start in plan mode", default: false });
+
 	pi.registerCommand("plan", {
 		description: "Toggle plan mode (read-only exploration)",
 		handler: async (_args, ctx) => togglePlanMode(ctx),
 	});
 
-	pi.registerCommand("todos", {
-		description: "Show current plan progress",
-		handler: async (_args, ctx) => {
-			if (todoItems.length === 0) {
-				ctx.ui.notify("No todos. Use /plan first.", "info");
-				return;
-			}
-			ctx.ui.notify(todoItems.map((t, i) => `${i + 1}. ${t.completed ? "✓" : "○"} ${t.text}`).join("\n"), "info");
-		},
-	});
-
 	pi.registerCommand("plan-close", {
-		description: "Force-close the active plan (hides checklist if model forgot [DONE:N] markers)",
+		description: "Force-close the active plan (stop tracking progress against the plan file)",
 		handler: async (_args, ctx) => {
-			if (!executionMode && todoItems.length === 0) {
+			if (!executionMode) {
 				ctx.ui.notify("No active plan.", "info");
 				return;
 			}
-			const total = todoItems.length;
-			const done = todoItems.filter((t) => t.completed).length;
-			finalizePlan(ctx);
-			ctx.ui.notify(`Plan closed manually (${done}/${total} steps marked done).`, "info");
+			const { total, completed } = finalizePlan(ctx);
+			ctx.ui.notify(`Plan closed manually (${completed}/${total} steps marked done).`, "info");
 		},
 	});
 
@@ -383,24 +369,24 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 			const { body } = parseFrontmatter<PlanFrontmatter>(raw);
-			const extracted = extractTodoItems(body.startsWith("Plan:") ? body : `Plan:\n${body}`);
-			if (extracted.length === 0) {
+			const steps = extractPlanSteps(body.startsWith("Plan:") ? body : `Plan:\n${body}`);
+			if (steps.length === 0) {
 				ctx.ui.notify(`Plan ${picked.slug} has no numbered steps to resume.`, "warning");
 				return;
 			}
 			const doneSet = new Set(picked.doneSteps);
-			for (const t of extracted) if (doneSet.has(t.step)) t.completed = true;
+			const todoPayload = steps.map((text, i) => ({ text, done: doneSet.has(i + 1) }));
 
 			planModeEnabled = false;
 			executionMode = true;
-			todoItems = extracted;
 			activePlanPath = picked.path;
 			pi.setActiveTools(NORMAL_MODE_TOOLS);
+			pi.events.emit("opus-pack:todo:replace", { items: todoPayload, source: "plan-resume" });
 			updateStatus(ctx);
 			persist();
-			const done = todoItems.filter((t) => t.completed).length;
+			const done = todoPayload.filter((t) => t.done).length;
 			ctx.ui.notify(
-				`Resumed plan ${picked.slug} (${done}/${todoItems.length} steps marked done). Continue execution; use [DONE:N] markers for remaining steps.`,
+				`Resumed plan ${picked.slug} (${done}/${todoPayload.length} steps marked done). Continue execution — call todo start/done to track progress.`,
 				"info",
 			);
 		},
@@ -420,14 +406,16 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	// Explicit LLM-callable exit: model proposes the full plan, user confirms,
-	// execution starts immediately. Avoids relying on [DONE:N] text parsing.
+	// execution starts immediately. Steps flow into the `todo` extension so
+	// progress tracking uses the normal todo tool.
 	pi.registerTool({
 		name: "exit_plan_mode",
 		label: "Exit plan mode",
 		description:
 			"Call when you have finished the plan and are ready to execute. " +
 			"Pass the plan as a numbered list (1. step one, 2. step two). " +
-			"The user is asked to approve; on approval plan mode exits and execution starts.",
+			"The user is asked to approve; on approval plan mode exits, the " +
+			"steps are installed in the todo list, and execution starts.",
 		promptSnippet: "exit_plan_mode(plan) — finish planning, request user approval to execute",
 		parameters: Type.Object({
 			plan: Type.String({ description: "The final plan as a numbered markdown list." }),
@@ -445,38 +433,46 @@ export default function (pi: ExtensionAPI) {
 					details: { approved: false },
 				};
 			}
-			const extracted = extractTodoItems(`Plan:\n${params.plan}`);
-			if (extracted.length > 0) todoItems = extracted;
+			const steps = extractPlanSteps(`Plan:\n${params.plan}`);
+			const firstStep = steps[0] ?? "plan";
+
+			const installSteps = () => {
+				pi.events.emit("opus-pack:todo:replace", {
+					items: steps.map((s) => ({ text: s })),
+					source: "exit_plan_mode",
+				});
+			};
 
 			if (!ctx.hasUI) {
 				// Non-interactive: auto-approve.
 				planModeEnabled = false;
-				executionMode = todoItems.length > 0;
+				executionMode = steps.length > 0;
+				installSteps();
 				pi.setActiveTools(NORMAL_MODE_TOOLS);
 				updateStatus(ctx);
-				persist();
 				let savedPathNI: string | undefined;
 				if (wantSave || cfg.autoSave) {
-					const res = savePlanToFile(ctx.cwd, cfg.dir, params.plan, "non-interactive", todoItems[0]?.text ?? "plan", params.save);
+					const res = savePlanToFile(ctx.cwd, cfg.dir, params.plan, "non-interactive", firstStep, params.save);
 					if ("path" in res) {
 						savedPathNI = res.path;
 						activePlanPath = res.path;
 					}
 				}
+				persist();
 				return {
-					content: [{ type: "text", text: `plan accepted (non-interactive). ${todoItems.length} steps. execute now.${savedPathNI ? ` saved: ${savedPathNI}` : ""}` }],
+					content: [{ type: "text", text: `plan accepted (non-interactive). ${steps.length} steps. execute now.${savedPathNI ? ` saved: ${savedPathNI}` : ""}` }],
 					isError: false,
-					details: { approved: true, steps: todoItems.length },
+					details: { approved: true, steps: steps.length },
 				};
 			}
 
 			const approved = await ctx.ui.confirm(
 				"Exit plan mode and execute?",
-				`${todoItems.length} step${todoItems.length === 1 ? "" : "s"} queued.`,
+				`${steps.length} step${steps.length === 1 ? "" : "s"} queued.`,
 			);
 			if (!approved) {
 				if (wantSave || cfg.autoSave) {
-					savePlanToFile(ctx.cwd, cfg.dir, params.plan, "rejected", todoItems[0]?.text ?? "plan", params.save);
+					savePlanToFile(ctx.cwd, cfg.dir, params.plan, "rejected", firstStep, params.save);
 				}
 				return {
 					content: [{ type: "text", text: "user declined execution. stay in plan mode." }],
@@ -485,13 +481,13 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 			planModeEnabled = false;
-			executionMode = todoItems.length > 0;
+			executionMode = steps.length > 0;
+			installSteps();
 			pi.setActiveTools(NORMAL_MODE_TOOLS);
 			updateStatus(ctx);
-			persist();
 			let savedPath: string | undefined;
 			if (wantSave || cfg.autoSave) {
-				const res = savePlanToFile(ctx.cwd, cfg.dir, params.plan, "approved", todoItems[0]?.text ?? "plan", params.save);
+				const res = savePlanToFile(ctx.cwd, cfg.dir, params.plan, "approved", firstStep, params.save);
 				if ("path" in res) {
 					savedPath = res.path;
 					activePlanPath = res.path;
@@ -500,10 +496,11 @@ export default function (pi: ExtensionAPI) {
 					ctx.ui.notify(`plan save failed: ${res.error}`, "warning");
 				}
 			}
+			persist();
 			return {
-				content: [{ type: "text", text: `plan approved. proceed with step 1. mark progress with [DONE:n] markers.${savedPath ? ` saved: ${savedPath}` : ""}` }],
+				content: [{ type: "text", text: `plan approved. proceed with step 1. mark progress with the todo tool (todo start <id> → work → todo done <id>).${savedPath ? ` saved: ${savedPath}` : ""}` }],
 				isError: false,
-				details: { approved: true, steps: todoItems.length },
+				details: { approved: true, steps: steps.length },
 			};
 		},
 	});
@@ -527,12 +524,14 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("before_agent_start", async (_event, ctx) => {
-		// Defensive: plan was fully executed but the agent_end clear somehow
-		// missed (e.g. another extension cancelled agent_end, or persist lost).
-		// Closing on the next user prompt keeps a stale checklist from hanging
-		// across unrelated work. Idempotent when already clean.
-		if (executionMode && todoItems.length > 0 && todoItems.every((t) => t.completed)) {
-			finalizePlan(ctx);
+		// Defensive finalize if todo signalled all-done between turns.
+		if (executionMode && pendingCompletionAnnounce) {
+			pendingCompletionAnnounce = false;
+			const { total } = finalizePlan(ctx, "completed");
+			pi.sendMessage(
+				{ customType: "plan-complete", content: `**Plan complete!** ✓ All ${total} steps done.`, display: true },
+				{ triggerTurn: false },
+			);
 		}
 		if (planModeEnabled) {
 			return {
@@ -545,59 +544,46 @@ Create a numbered plan under a "Plan:" header. Do NOT make changes.`,
 				},
 			};
 		}
-		if (executionMode && todoItems.length > 0) {
-			const remaining = todoItems.filter((t) => !t.completed);
+		if (executionMode && lastTodoItems.length > 0) {
+			const remaining = lastTodoItems
+				.map((t, i) => ({ step: i + 1, text: t.text, status: t.status }))
+				.filter((t) => t.status !== "done");
+			if (remaining.length === 0) return;
 			return {
 				message: {
 					customType: "plan-execution-context",
-					content: `[EXECUTING PLAN]\nRemaining:\n${remaining.map((t) => `${t.step}. ${t.text}`).join("\n")}\nInclude [DONE:n] after each step.`,
+					content: `[EXECUTING PLAN]\nRemaining:\n${remaining.map((t) => `${t.step}. ${t.text}`).join("\n")}\nDrive progress with the todo tool: todo start <id> before each step, todo done <id> when finished.`,
 					display: false,
 				},
 			};
 		}
 	});
 
-	pi.on("turn_end", async (event, ctx) => {
-		if (!executionMode || todoItems.length === 0) return;
-		if (!isAssistantMessage(event.message)) return;
-		const doneSteps = extractDoneSteps(getTextContent(event.message));
-		if (doneSteps.length === 0) return;
-		let changed = false;
-		for (const s of doneSteps) {
-			const item = todoItems.find((t) => t.step === s);
-			if (item && !item.completed) { item.completed = true; changed = true; }
-		}
-		updateStatus(ctx);
-		persist();
-		// Only touch the plan file when something actually advanced — avoid
-		// rewriting the file on every turn that happens to re-emit an old
-		// [DONE:N] marker.
-		if (changed) writebackProgress();
-	});
-
 	pi.on("agent_end", async (event, ctx) => {
-		if (executionMode && todoItems.length > 0) {
-			if (todoItems.every((t) => t.completed)) {
-				const stepCount = todoItems.length;
+		if (executionMode) {
+			// Completion handled lazily via pendingCompletionAnnounce so we
+			// don't double-fire if todo:changed already flipped the flag.
+			if (pendingCompletionAnnounce) {
+				pendingCompletionAnnounce = false;
+				const { total } = finalizePlan(ctx, "completed");
 				pi.sendMessage(
-					{ customType: "plan-complete", content: `**Plan complete!** ✓ All ${stepCount} steps done.`, display: true },
+					{ customType: "plan-complete", content: `**Plan complete!** ✓ All ${total} steps done.`, display: true },
 					{ triggerTurn: false },
 				);
-				finalizePlan(ctx);
 			}
 			return;
 		}
 		if (!planModeEnabled || !ctx.hasUI) return;
 
 		const lastAssistant = [...event.messages].reverse().find(isAssistantMessage);
+		let steps: string[] = [];
 		if (lastAssistant) {
-			const extracted = extractTodoItems(getTextContent(lastAssistant));
-			if (extracted.length > 0) todoItems = extracted;
+			steps = extractPlanSteps(getTextContent(lastAssistant));
 		}
 
-		if (todoItems.length > 0) {
+		if (steps.length > 0) {
 			pi.sendMessage(
-				{ customType: "plan-todo-list", content: `**Plan (${todoItems.length} steps):**\n${todoItems.map((t, i) => `${i + 1}. ☐ ${t.text}`).join("\n")}`, display: true },
+				{ customType: "plan-todo-list", content: `**Plan (${steps.length} steps):**\n${steps.map((t, i) => `${i + 1}. ☐ ${t}`).join("\n")}`, display: true },
 				{ triggerTurn: false },
 			);
 		}
@@ -610,11 +596,18 @@ Create a numbered plan under a "Plan:" header. Do NOT make changes.`,
 
 		if (choice === "Execute the plan") {
 			planModeEnabled = false;
-			executionMode = todoItems.length > 0;
+			executionMode = steps.length > 0;
+			if (steps.length > 0) {
+				pi.events.emit("opus-pack:todo:replace", {
+					items: steps.map((s) => ({ text: s })),
+					source: "plan-mode-manual-execute",
+				});
+			}
 			pi.setActiveTools(NORMAL_MODE_TOOLS);
 			updateStatus(ctx);
+			persist();
 			pi.sendMessage(
-				{ customType: "plan-mode-execute", content: `Execute the plan. Start with: ${todoItems[0]?.text ?? "the plan you created."}`, display: true },
+				{ customType: "plan-mode-execute", content: `Execute the plan. Start with: ${steps[0] ?? "the plan you created."} — use the todo tool to track progress.`, display: true },
 				{ triggerTurn: true },
 			);
 		} else if (choice === "Refine the plan") {
@@ -629,12 +622,37 @@ Create a numbered plan under a "Plan:" header. Do NOT make changes.`,
 		const entries = ctx.sessionManager.getEntries();
 		const last = entries
 			.filter((e: { type: string; customType?: string }) => e.type === "custom" && e.customType === "plan-mode")
-			.pop() as { data?: { enabled?: boolean; todos?: TodoItem[]; executing?: boolean } } | undefined;
+			.pop() as { data?: { enabled?: boolean; executing?: boolean; activePlanPath?: string | null } } | undefined;
 
 		if (last?.data) {
 			planModeEnabled = last.data.enabled ?? planModeEnabled;
-			todoItems = last.data.todos ?? todoItems;
 			executionMode = last.data.executing ?? executionMode;
+			activePlanPath = last.data.activePlanPath ?? null;
+		}
+
+		// Hydrate the todo snapshot directly from the session log so
+		// execution-context injection works on the very first turn after
+		// resume — regardless of whether the todo extension's session_start
+		// handler runs before or after ours.
+		if (executionMode) {
+			const lastTodo = entries
+				.filter((e: { type: string; customType?: string }) => e.type === "custom" && e.customType === "todo")
+				.pop() as { data?: { items?: Array<{ status?: string; text?: string }> } } | undefined;
+			const restored = lastTodo?.data?.items;
+			if (Array.isArray(restored)) {
+				lastTodoItems = restored
+					.filter((t): t is { status: string; text: string } => typeof t.text === "string" && typeof t.status === "string")
+					.map((t) => ({
+						status: (t.status === "done" || t.status === "in_progress" ? t.status : "pending") as TodoChangedItem["status"],
+						text: t.text,
+					}));
+				// Resume safety: if the plan was fully done in the previous
+				// session but the completion announcement never landed,
+				// queue it so the next before_agent_start finalizes cleanly.
+				if (lastTodoItems.length > 0 && lastTodoItems.every((t) => t.status === "done")) {
+					pendingCompletionAnnounce = true;
+				}
+			}
 		}
 
 		if (planModeEnabled) pi.setActiveTools(PLAN_MODE_TOOLS);

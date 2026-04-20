@@ -12,12 +12,23 @@
  *
  * Enforcement: first modifying tool_call without prior todo use → steering nag.
  * Second nag condition: extended modifying run with no in_progress task.
+ *
+ * Cross-extension API (event bus):
+ *   emit "opus-pack:todo:replace"  { items: Array<{text, done?}>, source? }
+ *     — wipe list and install new items; ids renumber from 1.
+ *   emit "opus-pack:todo:mark-done-by-step" { step }
+ *     — mark the Nth (1-based) item as done.
+ *   emit "opus-pack:todo:clear"
+ *     — wipe every task.
+ *   listen "opus-pack:todo:changed" { items }
+ *     — fires after every mutation. Used by plan-mode to writeback progress.
  */
 
 import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { isExtensionDisabled } from "../lib/settings.js";
+import { renderChecklist, type ChecklistItem } from "../lib/checklist.js";
 
 type Status = "pending" | "in_progress" | "done";
 
@@ -41,36 +52,8 @@ const migrateEntry = (e: LegacyTodoEntry): TodoEntry => {
 };
 
 const renderWidget = (ctx: ExtensionContext, items: TodoEntry[]) => {
-	if (items.length === 0) {
-		ctx.ui.setWidget("todo", undefined);
-		ctx.ui.setStatus("02-todo", undefined);
-		return;
-	}
-	const done = items.filter((t) => t.status === "done").length;
-	const inProg = items.find((t) => t.status === "in_progress");
-	const badge = inProg ? `▶ ${done}/${items.length}` : `${done}/${items.length}`;
-	ctx.ui.setStatus("02-todo", ctx.ui.theme.fg("accent", badge));
-
-	// For short lists keep insertion order so the user reads them top-to-bottom
-	// exactly as the model planned. For long lists reorder
-	// (in_progress → pending → done) so the "done" tail sinks below truncation.
-	const TRUNCATE_THRESHOLD = 10;
-	const ordered = items.length > TRUNCATE_THRESHOLD
-		? [
-			...items.filter((t) => t.status === "in_progress"),
-			...items.filter((t) => t.status === "pending"),
-			...items.filter((t) => t.status === "done"),
-		]
-		: items;
-	ctx.ui.setWidget("todo", ordered.map((t) => {
-		if (t.status === "done") {
-			return ctx.ui.theme.fg("success", "■") + " " + ctx.ui.theme.fg("muted", ctx.ui.theme.strikethrough(t.text));
-		}
-		if (t.status === "in_progress") {
-			return ctx.ui.theme.fg("accent", "▶") + " " + t.text;
-		}
-		return ctx.ui.theme.fg("dim", "□") + " " + t.text;
-	}));
+	const checklistItems: ChecklistItem[] = items.map((t) => ({ text: t.text, status: t.status }));
+	renderChecklist(ctx, checklistItems, { widgetKey: "todo", statusKey: "02-todo" });
 };
 
 const MODIFYING_TOOLS = new Set(["edit", "write"]);
@@ -98,6 +81,18 @@ export default function (pi: ExtensionAPI) {
 	let modifyingCallsWithoutInProgress = 0;
 
 	const persist = () => pi.appendEntry("todo", { items, nextId });
+
+	// Latest context captured from any event handler. Used so the event-bus
+	// listeners (which receive no ctx) can still update the widget right
+	// after a cross-extension replace/mark call.
+	let lastCtx: ExtensionContext | null = null;
+	const rerender = () => {
+		if (lastCtx) renderWidget(lastCtx, items);
+	};
+
+	const emitChanged = () => {
+		pi.events.emit("opus-pack:todo:changed", { items: items.map((t) => ({ ...t })) });
+	};
 
 	const resetEnforcement = () => {
 		todoWasUsed = items.length > 0;
@@ -132,7 +127,56 @@ export default function (pi: ExtensionAPI) {
 			nextId = last.data.nextId ?? items.length + 1;
 		}
 		renderWidget(ctx, items);
+		lastCtx = ctx;
 		resetEnforcement();
+		// Re-broadcast restored state so cross-extension consumers
+		// (plan-mode's progress mirror) rebuild their snapshots after
+		// a session resume. No-op if no one is listening yet.
+		emitChanged();
+	});
+
+	// Cross-extension listeners. plan-mode emits :replace when a plan is
+	// approved and :mark-done-by-step if it ever tracks progress externally.
+	pi.events.on("opus-pack:todo:replace", (data) => {
+		const payload = data as { items?: Array<{ text?: string; done?: boolean }> } | undefined;
+		const incoming = Array.isArray(payload?.items) ? payload!.items : [];
+		items = [];
+		nextId = 1;
+		for (const inc of incoming) {
+			const text = typeof inc.text === "string" ? inc.text : "";
+			if (!text) continue;
+			items.push({ id: String(nextId++), text, status: inc.done ? "done" : "pending" });
+		}
+		// Fresh plan installed externally: reset nag state so enforcement
+		// starts over against the new list.
+		todoWasUsed = items.length > 0;
+		hasNaggedStart = false;
+		hasNaggedInProgress = false;
+		modifyingCallsWithoutInProgress = 0;
+		persist();
+		rerender();
+		emitChanged();
+	});
+
+	pi.events.on("opus-pack:todo:mark-done-by-step", (data) => {
+		const payload = data as { step?: number } | undefined;
+		const step = Number(payload?.step);
+		if (!Number.isFinite(step) || step < 1 || step > items.length) return;
+		const target = items[step - 1];
+		if (target.status === "done") return;
+		target.status = "done";
+		persist();
+		rerender();
+		emitChanged();
+	});
+
+	pi.events.on("opus-pack:todo:clear", () => {
+		if (items.length === 0) return;
+		items = [];
+		nextId = 1;
+		persist();
+		rerender();
+		emitChanged();
 	});
 
 	pi.on("tool_call", async (event, _ctx) => {
@@ -213,6 +257,7 @@ export default function (pi: ExtensionAPI) {
 					items.push(entry);
 					persist();
 					renderWidget(ctx, items);
+					emitChanged();
 					return {
 						content: [{ type: "text", text: `Added #${entry.id} (pending): ${entry.text}` }],
 						details: { items },
@@ -223,6 +268,7 @@ export default function (pi: ExtensionAPI) {
 					const target = startInternal(params.id);
 					persist();
 					renderWidget(ctx, items);
+					emitChanged();
 					return {
 						content: [{ type: "text", text: `Started #${target.id}: ${target.text}` }],
 						details: { items },
@@ -235,6 +281,7 @@ export default function (pi: ExtensionAPI) {
 					target.status = "done";
 					persist();
 					renderWidget(ctx, items);
+					emitChanged();
 					const next = items.find((t) => t.status === "pending");
 					const suffix = next ? ` Next pending: #${next.id} — ${next.text}. Call todo start ${next.id}.` : " All done!";
 					return {
@@ -251,10 +298,18 @@ export default function (pi: ExtensionAPI) {
 					items = items.filter((t) => t.status !== "done");
 					persist();
 					renderWidget(ctx, items);
+					emitChanged();
 					return { content: [{ type: "text", text: `Cleared done. ${items.length} remaining.` }], details: { items } };
 				}
 			}
 		},
+	});
+
+	// Refresh the widget on every turn and keep lastCtx fresh so event-bus
+	// listeners can re-render widgets when plan-mode mutates state.
+	pi.on("before_agent_start", async (_event, ctx) => {
+		lastCtx = ctx;
+		renderWidget(ctx, items);
 	});
 
 	pi.registerCommand("todo", {

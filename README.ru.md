@@ -86,7 +86,7 @@ Highlights:
 
 - **`cc-bridge/`** — одно расширение с четырьмя sub-модулями (skills / commands / claude-md / hooks), bridge'ит cross-vendor config-деревья (`~/.claude`, `~/.codex`, `~/.gemini`, `~/.pi` + то же на project scope). Hooks поддерживают Claude Code `hooks` блок в `settings.json` и file-based хуки под `<vendor>/hooks/*.md|*.sh`. Всё под одним `/cc-bridge [status|reload|help]` slash.
 - **`safe-deny`** — non-interactive guardrail против деструктивного bash (argv-aware, разворачивает sudo) и доступа к credentials (блочит read **и** write на `.env`, `*.pem`, SSH keys, `~/.aws`, `~/.kube` и пр.). Bypass: `PI_OPUS_PACK_UNSAFE=1`.
-- **`plan-mode`** — `/plan` + `Ctrl+Alt+P`, cross-session `/plan-resume`, `[DONE:N]` progress tracking, `--plan` флаг.
+- **`plan-mode`** — `/plan` + `Ctrl+Alt+P`, cross-session `/plan-resume`, progress tracking делегирован в `todo` tool, `--plan` флаг.
 - **`model-router`** — heuristic auto-switch модели и thinking level с rate-limit downgrade на 429.
 - **`opus-pack-config`** — `/opus-pack` modal и subcommands для toggle любого расширения на ходу.
 

@@ -86,7 +86,7 @@ Highlights:
 
 - **`cc-bridge/`** — one extension hosting four sub-modules (skills / commands / claude-md / hooks) that bridge cross-vendor config trees (`~/.claude`, `~/.codex`, `~/.gemini`, `~/.pi`, plus the same four at project scope). Hooks support the Claude Code `hooks` block in `settings.json` and file-based hooks under `<vendor>/hooks/*.md|*.sh`. Everything under one `/cc-bridge [status|reload|help]` slash.
 - **`safe-deny`** — non-interactive guardrail against destructive bash (argv-aware, sudo-unwrapping) and credential access (blocks read **and** write on `.env`, `*.pem`, SSH keys, `~/.aws`, `~/.kube`, etc.). Bypass: `PI_OPUS_PACK_UNSAFE=1`.
-- **`plan-mode`** — `/plan` + `Ctrl+Alt+P`, cross-session `/plan-resume`, `[DONE:N]` progress tracking, `--plan` startup flag.
+- **`plan-mode`** — `/plan` + `Ctrl+Alt+P`, cross-session `/plan-resume`, progress tracking delegated to the `todo` tool, `--plan` startup flag.
 - **`model-router`** — heuristic model + thinking-level switcher per prompt with rate-limit downgrade on 429.
 - **`opus-pack-config`** — `/opus-pack` modal and subcommands to toggle any extension at runtime.
 

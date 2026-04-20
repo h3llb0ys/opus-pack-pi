@@ -43,9 +43,9 @@ Caps agent turns per run.
 
 ### `plan-mode.ts`
 
-Read-only exploration mode. Produce a numbered plan, call `exit_plan_mode(plan, save?)` to exit, then execute with `[DONE:N]` progress tracking.
+Read-only exploration mode. Produce a numbered plan, call `exit_plan_mode(plan, save?)` to exit. On approval the steps are installed into the `todo` list and execution progress is driven by the normal `todo start/done` tool — plan-mode mirrors done-state into the saved plan file.
 
-- **Slashes:** `/plan`, `/plan-resume`, `/plan-close`, `/todos`.
+- **Slashes:** `/plan`, `/plan-resume`, `/plan-close`.
 - **Shortcut:** `Ctrl+Alt+P` (also `Alt+Tab`, `Super+P`).
 - **Flag:** `--plan` starts pi directly in plan mode.
 - **Persistence:** plans saved under `.pi/plans/<ts>-<slug>.md` when `save=true` or `opus-pack.planMode.autoSave=true`.

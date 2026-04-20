@@ -19,7 +19,7 @@
 ### Plan mode
 
 - `/plan` or `Ctrl+Alt+P` enters read-only exploration. Produce a numbered plan; the user confirms before execution.
-- Use `[DONE:N]` markers to track progress during execution.
+- On approval the plan steps are installed in the `todo` list. Drive execution progress with the normal `todo start <id>` / `todo done <id>` tool — plan-mode mirrors done-state into the saved plan file.
 - Never modify code in plan mode — analysis and planning only.
 - `/plan-resume` reloads a saved plan across sessions; `/plan-close` is the manual escape hatch when a plan stalls.
 
@@ -49,7 +49,7 @@
 
 - When the plan is ready, call `exit_plan_mode(plan, save?)`. pi prompts the user for confirmation and switches to execution on approval.
 - Pass `save` to persist the plan into `.pi/plans/<ts>-<slug>.md` (or enable `opus-pack.planMode.autoSave`).
-- Emit `[DONE:N]` markers as steps complete; the extension writes them back into the plan file for cross-session resume via `/plan-resume`.
+- As execution progresses, `todo done <id>` is mirrored to the plan file's `done_steps` frontmatter for cross-session resume via `/plan-resume`.
 
 ### Compaction
 
