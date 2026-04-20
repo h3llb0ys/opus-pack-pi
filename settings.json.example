@@ -98,6 +98,14 @@
       "minDuration": 10,
       "sound": true
     },
+    "selfRecheck": {
+      "_comment": "Auto-injects a self-critique follow-up turn for weak models. Fires once after agent_end if the active model id matches one of `models` (glob). Use /recheck status|on|off|now|skip. /recheck now bypasses model match and cap.",
+      "enabled": false,
+      "models": ["glm-*", "*qwen*", "deepseek*"],
+      "minAssistantChars": 200,
+      "maxPerSession": 0,
+      "_prompt_comment": "Override the default critique prompt by setting `prompt` (string). Default is in extensions/self-recheck.ts (English, four axes: correctness/completeness/depth/code)."
+    },
     "_compactHints_comment": "Fill compactHints with project-specific topics to preserve during /compact.",
     "compactHints": [],
     "_compactHints_example": [

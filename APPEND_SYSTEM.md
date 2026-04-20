@@ -104,6 +104,13 @@
 - Footer slot `off:N` appears when anything is disabled.
 - `/extensions` prints a read-only health dashboard of every pack extension.
 
+### Self-recheck (weak-model second pass)
+
+- When `selfRecheck.enabled` and the active model id matches a glob in `selfRecheck.models` (e.g. `glm-*`), an automatic critique turn fires after each `agent_end`. The model is asked to list concrete defects in its own previous answer and produce a corrected version.
+- Recursion-safe: the recheck turn itself never triggers another recheck.
+- `/recheck status | on | off | now | skip` — `now` forces one pass on the next turn regardless of model match or cap; `skip` suppresses the next auto-fire.
+- Tune the critique prompt in `selfRecheck.prompt`. Defaults to a four-axis review (correctness, completeness, depth, code).
+
 ### Notifications
 
 - Desktop notifications fire automatically when a task finishes and ran longer than the configured threshold (default 10s). Don't ask the user to check — they'll see it.
