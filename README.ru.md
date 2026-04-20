@@ -71,68 +71,24 @@ Pack состоит из трёх слоёв:
 
 ### Свои расширения
 
-Группировка как в `/opus-pack`.
+Полный reference: [**extensions/README.md**](./extensions/README.md) (на английском — держится рядом с кодом). Ниже summary, сгруппированный как в `/opus-pack`:
 
-#### Safety
-
-| Расширение | Что делает |
+| Категория | Расширения |
 |---|---|
-| `safe-deny` | Без интерактивных confirm блочит деструктив. Bash argv-parser (разворачивает `sudo`) ловит `rm -rf /|~`, `git push --force` на main/master, `--no-verify` commits, `chmod -R 777`, `chown -R`, `dd if=/of=`, `mkfs.*`, fork bombs, `curl\|sh`. Path-rules блочат **write** на `.env`, `*.pem`, `*.key`, SSH-ключи, `~/.ssh`, `~/.aws`, `~/.config/gcloud`, `~/.kube`, `~/.openai`, `~/.anthropic`, `~/.{claude,codex,gemini}`. **Read** также блочится на credentials-подмножестве (защита от утечки в prompt). Bypass: `PI_OPUS_PACK_UNSAFE=1`. |
-| `permissions` | Granular allow / confirm / deny per tool, path, bash-pattern. 4-way prompt (once / session / always / deny) с line-diff preview для `write` и приблизительными номерами строк для `edit`. Конфиг в `opus-pack.permissions`. |
-| `dirty-repo-guard` | Warn при старте сессии на грязном working tree. |
-| `iteration-guard` | Лимит turns на agent-run (default 40, настраивается). `/continue` продлевает. Поддерживает `--max-turns=<N>` и env `PI_MAX_TURNS`. |
+| **Safety** | `safe-deny`, `permissions`, `dirty-repo-guard`, `iteration-guard` |
+| **Tasks & routing** | `plan-mode`, `todo`, `model-router` |
+| **UI & reporting** | `status`, `bash-progress`, `mcp-compress`, `desktop-notify`, `session-summary`, `cost`, `list-resources` |
+| **Integrations** | `cc-bridge/` (skills, commands, claude-md, hooks), `smart-compact`, `log-tail`, `edit-log`, `pi-search`, `deferred-tools` |
+| **Dev loop** | `diff`, `auto-commit-on-exit` |
+| **Meta** | `opus-pack-config` |
 
-#### Tasks & routing
+Highlights:
 
-| Расширение | Что делает |
-|---|---|
-| `plan-mode` | `/plan` + `Ctrl+Alt+P`. Read-only режим с numbered plan. Агент вызывает `exit_plan_mode(plan, save?)` → confirm dialog → execute с `[DONE:N]` tracking. `/plan-resume` грузит сохранённый план cross-session. `/plan-close` — manual escape hatch. Флаг `--plan` стартует в plan mode. |
-| `todo` | `todo` tool (`add`/`start`/`done`/`clear`) + `/todo` command. Task list с single-active инвариантом (как CC TodoWrite). Widget + footer badge. |
-| `model-router` | Heuristic auto-switch модели и thinking level по промпту. `/router <level>`, `/router status`, `/router off`. Распознаёт rate-limit headers Anthropic/OpenAI для graceful downgrade. Status slot: `↗ model·level`. |
-
-#### UI & reporting
-
-| Расширение | Что делает |
-|---|---|
-| `status` | `/status` печатает сводку (extensions, skills, prompts, MCP tools, model, ctx usage). Live statusline: `cwd · branch · model · ctx:X%`. Footer: `ext:N skills:M mcp:K`. Опциональный `opus-pack.statusLine.command` — user shell-команда, stdout которой идёт в footer. |
-| `bash-progress` | Live widget с tail + elapsed counter для долгих bash-команд (>2s). Сам tool не меняет. |
-| `mcp-compress` | Схлопывает verbose MCP tool results в 1-строчные summaries (`ok memory_save: saved, id=208, deduped`). Распознаёт `saved` / `id` / `deduplicated` / `episode_id` / `count` / `error`. Конфиг в `opus-pack.mcpCompress`. |
-| `desktop-notify` | OS notification (macOS/Linux) по завершении агента. Настройка порога + звук. `/notify-test`. |
-| `session-summary` | Авто-резюме при завершении agent'а (≥ 3 tool calls): сколько файлов изменено, команд выполнено, ошибок. |
-| `cost` | `/cost` — dashboard token usage: текущая сессия, сегодня, 7 дней с breakdown по дням. Показывает `—` если цена неизвестна (не-Anthropic провайдеры). |
-| `list-resources` | `/extensions` (+ health dashboard pack'а), `/prompts`. `/skills` делегирован в установленный `pi-skills-menu`. |
-
-#### Integrations
-
-`cc-bridge` — одно расширение, которое содержит четыре CC-parity sub-модуля под одним namespace. Каждый sub-модуль toggle'ится независимо через `cc-bridge.<sub>` в `settings.local.json`, все четыре делят `/cc-bridge [status|reload|help]` slash.
-
-| Sub-модуль | Что делает |
-|---|---|
-| `cc-bridge.skills` | Регистрирует `<vendor>/skills` как skill roots (`~/.claude`, `~/.codex`, `~/.gemini`, `~/.pi` + те же четыре под корнем проекта). Cross-vendor CC-style скиллы появляются в pi `<available_skills>`. |
-| `cc-bridge.commands` | Грузит `*.md` slash-команды с YAML frontmatter из `<vendor>/commands` на user и project scope. Поддиректории становятся `plugin:name` namespaces. Подстановка `$ARGS` / `$1..$9`. CC-формат работает без изменений. |
-| `cc-bridge.claude-md` | Автоподхват `~/.{claude,codex,gemini,pi}/CLAUDE.md\|AGENTS.md` + upward walk `CLAUDE.md` / `AGENTS.md` с cwd в system prompt. Mtime-cached. |
-| `cc-bridge.hooks` | Claude-Code-format hooks из **двух источников**. (a) Блок `hooks` в `~/.pi/agent/settings.json` / `<cwd>/.pi/settings.json` — та же схема что у Claude Code, копипасть CC-конфиги как есть. (b) File-tree discovery под `<vendor>/hooks/*.md` или `*.sh` с frontmatter `event` / `matcher` / `timeout`; body — shell script, а для `.sh` файлов запускается сам файл напрямую. Оба источника мержатся по event'ам (сначала settings.json, потом user-scope, потом project-scope). Events: `PreToolUse`, `PostToolUse`, `SessionStart`, `SessionEnd`, `Stop`, `UserPromptSubmit`, `PreCompact`. |
-
-| Расширение | Что делает |
-|---|---|
-| `pi-search` | `/pi-search [query]` — discovery по GitHub topic `pi-package` + interactive install + `/reload`. Cache 1h. |
-| `smart-compact` | Мерджит `.pi/compact-hints.md` или `opus-pack.compactHints` с inline focus от built-in `/compact [focus]`. Сохраняет ключевой контекст при compact. |
-| `log-tail` | `log_tail` / `log_kill` / `log_ps` tools + `/bg` picker. Pi-native long-running tasks: модель detach'ит bash в `/tmp/pi-bg-<slug>.{log,pid}`, расширение читает/убивает. `watch: true` пушит новые строки на каждый turn. Footer: `bg:N`. |
-| `edit-log` | `/edit-log` — on-demand история edit/write операций за сессию. Ничего не инжектит в system prompt, только по запросу. |
-| `deferred-tools` | Feature-flagged (`opus-pack.deferredTools.enabled`). Прунит активный tool list на каждый turn, прячет MCP tools за `tool_search` / `tool_load` прокси. Экономит prompt-токены когда MCP большой. |
-
-#### Dev loop
-
-| Расширение | Что делает |
-|---|---|
-| `diff` | `/diff` — обзор изменений агента: `git diff HEAD --stat` + интерактивный пикер файла с полным diff. |
-| `auto-commit-on-exit` | Snapshot commit при выходе из pi. |
-
-#### Meta
-
-| Расширение | Что делает |
-|---|---|
-| `opus-pack-config` | `/opus-pack` + `Ctrl+Alt+O` — пикер on/off любого расширения pack'а. Subcommands для scripting: `status`, `list [cat]`, `on <name>`, `off <name> [--force]`, `reset`, `help`. Persist в `settings.local.json`. Footer slot: `off:N` когда что-то выключено. |
+- **`cc-bridge/`** — одно расширение с четырьмя sub-модулями (skills / commands / claude-md / hooks), bridge'ит cross-vendor config-деревья (`~/.claude`, `~/.codex`, `~/.gemini`, `~/.pi` + то же на project scope). Hooks поддерживают Claude Code `hooks` блок в `settings.json` и file-based хуки под `<vendor>/hooks/*.md|*.sh`. Всё под одним `/cc-bridge [status|reload|help]` slash.
+- **`safe-deny`** — non-interactive guardrail против деструктивного bash (argv-aware, разворачивает sudo) и доступа к credentials (блочит read **и** write на `.env`, `*.pem`, SSH keys, `~/.aws`, `~/.kube` и пр.). Bypass: `PI_OPUS_PACK_UNSAFE=1`.
+- **`plan-mode`** — `/plan` + `Ctrl+Alt+P`, cross-session `/plan-resume`, `[DONE:N]` progress tracking, `--plan` флаг.
+- **`model-router`** — heuristic auto-switch модели и thinking level с rate-limit downgrade на 429.
+- **`opus-pack-config`** — `/opus-pack` modal и subcommands для toggle любого расширения на ходу.
 
 ### Community-пакеты, которые ставит `install.sh`
 

@@ -71,68 +71,24 @@ Extensions load through pi's native plugin loader. Community packages are pulled
 
 ### Own extensions
 
-Grouped the same way `/opus-pack` groups them.
+Full reference: [**extensions/README.md**](./extensions/README.md). Summary, grouped the same way `/opus-pack` groups them:
 
-#### Safety
-
-| Extension | What it does |
+| Category | Extensions |
 |---|---|
-| `safe-deny` | Non-interactively blocks destructive operations. Argv-aware bash parser (unwraps `sudo`) catches `rm -rf /|~`, `git push --force` to main/master, `--no-verify` commits, `chmod -R 777`, `chown -R`, `dd if=/of=`, `mkfs.*`, fork bombs, `curl\|sh`. Path rules block **writes** to `.env`, `*.pem`, `*.key`, SSH keys, `~/.ssh`, `~/.aws`, `~/.config/gcloud`, `~/.kube`, `~/.openai`, `~/.anthropic`, `~/.{claude,codex,gemini}`. **Reads** also blocked on the credential subset to prevent exfiltration into prompt context. Bypass with `PI_OPUS_PACK_UNSAFE=1`. |
-| `permissions` | Granular allow / confirm / deny per tool, path, and bash pattern. 4-way interactive prompt (once / session / always / deny) with line-diff previews for `write` and approximate line numbers for `edit`. Config under `opus-pack.permissions`. |
-| `dirty-repo-guard` | Warns when the session starts on a dirty working tree. |
-| `iteration-guard` | Caps turns per agent run (default 40, configurable). `/continue` extends. `--max-turns=<N>` and `PI_MAX_TURNS` env var supported. |
+| **Safety** | `safe-deny`, `permissions`, `dirty-repo-guard`, `iteration-guard` |
+| **Tasks & routing** | `plan-mode`, `todo`, `model-router` |
+| **UI & reporting** | `status`, `bash-progress`, `mcp-compress`, `desktop-notify`, `session-summary`, `cost`, `list-resources` |
+| **Integrations** | `cc-bridge/` (skills, commands, claude-md, hooks), `smart-compact`, `log-tail`, `edit-log`, `pi-search`, `deferred-tools` |
+| **Dev loop** | `diff`, `auto-commit-on-exit` |
+| **Meta** | `opus-pack-config` |
 
-#### Tasks & routing
+Highlights:
 
-| Extension | What it does |
-|---|---|
-| `plan-mode` | `/plan` + `Ctrl+Alt+P`. Read-only exploration mode with a numbered plan. Agent calls `exit_plan_mode(plan, save?)` → confirm dialog → execute with `[DONE:N]` tracking. `/plan-resume` reloads a saved plan across sessions. `/plan-close` is the manual escape hatch. `--plan` flag starts in plan mode. |
-| `todo` | `todo` tool (`add`/`start`/`done`/`clear`) + `/todo` command. Task list with single-active invariant, mirroring Claude Code's TodoWrite. Widget + footer badge. |
-| `model-router` | Heuristic auto-switch of model and thinking level per prompt. `/router <level>`, `/router status`, `/router off`. Recognises Anthropic and OpenAI rate-limit headers for graceful downgrade. Status slot: `↗ model·level`. |
-
-#### UI & reporting
-
-| Extension | What it does |
-|---|---|
-| `status` | `/status` dumps a summary (extensions, skills, prompts, MCP tools, model, context usage). Live status line: `cwd · branch · model · ctx:X%`. Footer: `ext:N skills:M mcp:K`. Optional `opus-pack.statusLine.command` runs a user shell command whose stdout lands in the footer. |
-| `bash-progress` | Live widget with tail + elapsed counter for long bash commands (>2s). Doesn't modify the tool itself. |
-| `mcp-compress` | Collapses verbose MCP tool results into one-line summaries (`ok memory_save: saved, id=208, deduped`). Recognises `saved` / `id` / `deduplicated` / `episode_id` / `count` / `error`. Configurable under `opus-pack.mcpCompress`. |
-| `desktop-notify` | OS notification (macOS/Linux) when an agent finishes. Configurable threshold + sound. `/notify-test`. |
-| `session-summary` | Auto-summary on agent exit (≥ 3 tool calls): files edited, commands run, errors encountered. |
-| `cost` | `/cost` — token-usage dashboard: current session, today, past 7 days with per-day breakdown. Shows `—` when pricing is unknown (non-Anthropic providers). |
-| `list-resources` | `/extensions` (doubles as a pack health dashboard), `/prompts`. `/skills` is provided by the installed `pi-skills-menu`. |
-
-#### Integrations
-
-`cc-bridge` is a single extension that ships four CC-parity sub-modules under one namespace. Each sub-module toggles independently via `cc-bridge.<sub>` in `settings.local.json`, and all four share the `/cc-bridge [status|reload|help]` slash.
-
-| Sub-module | What it does |
-|---|---|
-| `cc-bridge.skills` | Registers `<vendor>/skills` as skill roots (`~/.claude`, `~/.codex`, `~/.gemini`, `~/.pi`, plus the same four under the project root). Cross-vendor CC-style skills appear in pi's `<available_skills>` catalogue. |
-| `cc-bridge.commands` | Loads `*.md` slash commands with YAML frontmatter from `<vendor>/commands` at user and project scope. Subdirectories become `plugin:name` namespaces. `$ARGS` / `$1..$9` substitution. Drops in CC-format commands unmodified. |
-| `cc-bridge.claude-md` | Auto-loads `~/.{claude,codex,gemini,pi}/CLAUDE.md\|AGENTS.md` + an upward walk of `CLAUDE.md` / `AGENTS.md` from the cwd into the system prompt. Mtime-cached. |
-| `cc-bridge.hooks` | Claude-Code-format hooks from **two sources**. (a) The `hooks` block in `~/.pi/agent/settings.json` / `<cwd>/.pi/settings.json` — same schema as Claude Code, so CC configs paste in unchanged. (b) File-tree discovery under `<vendor>/hooks/*.md` or `*.sh` with frontmatter `event` / `matcher` / `timeout`; body is the shell script, or for `.sh` files the file itself runs directly. Both sources are merged per event (settings.json first, then user-scope files, then project-scope files). Events: `PreToolUse`, `PostToolUse`, `SessionStart`, `SessionEnd`, `Stop`, `UserPromptSubmit`, `PreCompact`. |
-
-| Extension | What it does |
-|---|---|
-| `pi-search` | `/pi-search [query]` — GitHub topic `pi-package` discovery + interactive install + `/reload`. 1-hour cache. |
-| `smart-compact` | Merges `.pi/compact-hints.md` or `opus-pack.compactHints` with the inline focus from built-in `/compact [focus]`. Preserves key context across compaction. |
-| `log-tail` | `log_tail` / `log_kill` / `log_ps` tools + `/bg` picker. Pi-native long-running tasks: the model detaches bash to `/tmp/pi-bg-<slug>.{log,pid}`, the extension reads and kills. `watch: true` pushes new lines on every turn. Footer: `bg:N`. |
-| `edit-log` | `/edit-log` — on-demand history of edit/write operations for the current session. Nothing is injected into the system prompt; output is only on demand. |
-| `deferred-tools` | Feature-flagged (`opus-pack.deferredTools.enabled`). Prunes the active tool list on every turn, hiding MCP tools behind `tool_search` / `tool_load` proxies. Saves prompt tokens when the MCP park is large. |
-
-#### Dev loop
-
-| Extension | What it does |
-|---|---|
-| `diff` | `/diff` — review agent changes: `git diff HEAD --stat` + interactive file picker with full diff. |
-| `auto-commit-on-exit` | Snapshot commit on pi exit. |
-
-#### Meta
-
-| Extension | What it does |
-|---|---|
-| `opus-pack-config` | `/opus-pack` + `Ctrl+Alt+O` — picker to enable/disable any extension in the pack. Subcommands for scripting: `status`, `list [cat]`, `on <name>`, `off <name> [--force]`, `reset`, `help`. Persists to `settings.local.json`. Footer slot: `off:N` when anything is disabled. |
+- **`cc-bridge/`** — one extension hosting four sub-modules (skills / commands / claude-md / hooks) that bridge cross-vendor config trees (`~/.claude`, `~/.codex`, `~/.gemini`, `~/.pi`, plus the same four at project scope). Hooks support the Claude Code `hooks` block in `settings.json` and file-based hooks under `<vendor>/hooks/*.md|*.sh`. Everything under one `/cc-bridge [status|reload|help]` slash.
+- **`safe-deny`** — non-interactive guardrail against destructive bash (argv-aware, sudo-unwrapping) and credential access (blocks read **and** write on `.env`, `*.pem`, SSH keys, `~/.aws`, `~/.kube`, etc.). Bypass: `PI_OPUS_PACK_UNSAFE=1`.
+- **`plan-mode`** — `/plan` + `Ctrl+Alt+P`, cross-session `/plan-resume`, `[DONE:N]` progress tracking, `--plan` startup flag.
+- **`model-router`** — heuristic model + thinking-level switcher per prompt with rate-limit downgrade on 429.
+- **`opus-pack-config`** — `/opus-pack` modal and subcommands to toggle any extension at runtime.
 
 ### Community packages installed by `install.sh`
 
