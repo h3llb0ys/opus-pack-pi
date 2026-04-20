@@ -10,7 +10,7 @@
 
 ## Что получаешь
 
-- **24 своих расширения** — plan mode, tasks, permissions, routing, safety, git, CLAUDE.md discovery, Claude-Code-style hooks и другое.
+- **19 своих расширений** (22 toggleable sub-модуля с учётом четырёх cc-bridge) — plan mode, tasks, permissions, routing, safety, git, CLAUDE.md discovery, Claude-Code-style hooks и другое.
 - **17 community-пакетов** ставятся автоматически: subagent-оркестрация, real-time quality pipeline, hash-anchored edits, agentic context management, параллельные side-conversations, secret scanning и полезные мелочи.
 - **`lean-ctx`** ставится рядом как standalone Rust binary — ~90% экономии токенов на shell и file-read выводе.
 - **Два chain-совместимых agent-профиля** (`explore`, `verify`), встраивающиеся в `pi-subagents` pipelines.
@@ -59,7 +59,7 @@ Pack состоит из трёх слоёв:
 
 | Слой | Источник | Кол-во |
 |---|---|---|
-| Свои расширения | `extensions/*.ts` в этом репо | 24 |
+| Свои расширения | `extensions/*.ts` + `cc-bridge/` в этом репо | 19 (22 toggleable sub-модуля) |
 | Community-расширения | ставятся через `pi install <pkg>` | 17 + 1 opt-in |
 | Agent-профили | `agents/*.md` копируются в `~/.pi/agent/agents/` | 2 |
 

@@ -10,7 +10,7 @@ Provider-neutral extension bundle for [pi-coding-agent](https://github.com/badlo
 
 ## What you get
 
-- **24 first-party extensions** covering plan mode, tasks, permissions, routing, safety, git, CLAUDE.md discovery, Claude-Code-style hooks, and more.
+- **19 first-party extensions** (22 toggleable sub-modules counting cc-bridge's four) covering plan mode, tasks, permissions, routing, safety, git, CLAUDE.md discovery, Claude-Code-style hooks, and more.
 - **17 community packages** auto-installed: subagent orchestration, real-time code-quality pipeline, hash-anchored edits, agentic context management, parallel side-conversations, secret scanning, and a drop of developer niceties.
 - **`lean-ctx`** installed alongside as a single Rust binary — ~90% token savings on shell and file-read output.
 - **Two chain-compatible agent profiles** (`explore`, `verify`) that plug into `pi-subagents` pipelines.
@@ -59,7 +59,7 @@ The pack has three layers:
 
 | Layer | Source | Count |
 |---|---|---|
-| Own extensions | `extensions/*.ts` in this repo | 24 |
+| Own extensions | `extensions/*.ts` + `cc-bridge/` in this repo | 19 (22 toggleable sub-modules) |
 | Community extensions | installed via `pi install <pkg>` | 17 + 1 opt-in |
 | Agent profiles | `agents/*.md` copied to `~/.pi/agent/agents/` | 2 |
 
