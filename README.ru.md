@@ -169,7 +169,6 @@ Pack состоит из трёх слоёв:
 - **[`viartemev/pi-rtk-rewrite`](https://github.com/viartemev/pi-rtk-rewrite)** — авто-rtk rewrite на bash (60–90% token savings на common командах).
 - **[`nicobailon/pi-mcp-adapter`](https://github.com/nicobailon/pi-mcp-adapter)** — MCP bridge в Claude Code формате, proxy-tool ~200 токенов, lazy lifecycle, `idleTimeout`.
 - **[`tmustier/pi-extensions`](https://github.com/tmustier/pi-extensions)** — `/usage` dashboard, `/readfiles` file browser, tab-status, ralph-wiggum (long tasks), agent-guidance (Claude / Codex / Gemini switching).
-- **[`MasuRii/pi-tool-display`](https://github.com/MasuRii/pi-tool-display)** — компактный рендеринг tool calls.
 - **[`nicobailon/pi-web-access`](https://github.com/nicobailon/pi-web-access)** — web search + extraction.
 - **[`viartemev/pi-working-message`](https://github.com/viartemev/pi-working-message)** — косметика, кастомные "working" фразы.
 

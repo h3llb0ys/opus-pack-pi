@@ -24,7 +24,6 @@ PACKAGES=(
 	"git:github.com/viartemev/pi-rtk-rewrite"
 	"npm:pi-mcp-adapter"
 	"git:github.com/tmustier/pi-extensions"
-	"git:github.com/MasuRii/pi-tool-display"
 	"git:github.com/nicobailon/pi-web-access"
 	"git:github.com/viartemev/pi-working-message"
 	"git:github.com/nicobailon/pi-subagents"

@@ -169,7 +169,6 @@ Grouped the same way `/opus-pack` groups them.
 - **[`viartemev/pi-rtk-rewrite`](https://github.com/viartemev/pi-rtk-rewrite)** — auto-rewrites bash commands through `rtk` (60–90% token savings on common commands).
 - **[`nicobailon/pi-mcp-adapter`](https://github.com/nicobailon/pi-mcp-adapter)** — MCP bridge in Claude Code format, ~200-token proxy tool, lazy lifecycle, `idleTimeout`.
 - **[`tmustier/pi-extensions`](https://github.com/tmustier/pi-extensions)** — `/usage` dashboard, `/readfiles` file browser, tab-status, ralph-wiggum (long tasks), agent-guidance (Claude / Codex / Gemini switching).
-- **[`MasuRii/pi-tool-display`](https://github.com/MasuRii/pi-tool-display)** — compact tool-call rendering.
 - **[`nicobailon/pi-web-access`](https://github.com/nicobailon/pi-web-access)** — web search + extraction.
 - **[`viartemev/pi-working-message`](https://github.com/viartemev/pi-working-message)** — cosmetic custom "working" phrases.
 
