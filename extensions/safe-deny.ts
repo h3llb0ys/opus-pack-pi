@@ -17,6 +17,7 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { isExtensionDisabled } from "../lib/settings.js";
+import { extractPath } from "../lib/input-helpers.js";
 
 const HOME = homedir();
 
@@ -142,14 +143,26 @@ interface DenyRule {
 
 const has = (argv: string[], flag: string) => argv.some((a) => a === flag);
 
+// Normalise a segment: strip a leading `sudo [flags]` so follow-up rules can
+// match the real command. Bash argv rules still catch `sudo` as head if nothing
+// else does, but this lets us block e.g. `sudo dd if=…` by the same dd rule
+// that catches the unsudoed version.
+const stripSudo = (argv: string[]): string[] => {
+	if (argv[0] !== "sudo") return argv;
+	let i = 1;
+	while (i < argv.length && argv[i].startsWith("-")) i++;
+	return argv.slice(i);
+};
+
 const DENY_RULES: DenyRule[] = [
 	{
 		reason: "rm -rf on / or ~",
 		match: (argv) => {
-			if (argv[0] !== "rm") return false;
-			const rf = argv.some((a) => /^-[a-z]*r[a-z]*f|^-[a-z]*f[a-z]*r/i.test(a) || a === "--recursive" || a === "--force");
+			const a = stripSudo(argv);
+			if (a[0] !== "rm") return false;
+			const rf = a.some((x) => /^-[a-z]*r[a-z]*f|^-[a-z]*f[a-z]*r/i.test(x) || x === "--recursive" || x === "--force");
 			if (!rf) return false;
-			return argv.some((a, i) => i > 0 && (a === "/" || a === "~" || a === "~/" || a === HOME || a === `${HOME}/`));
+			return a.some((x, i) => i > 0 && (x === "/" || x === "~" || x === "~/" || x === HOME || x === `${HOME}/`));
 		},
 	},
 	{
@@ -165,12 +178,34 @@ const DENY_RULES: DenyRule[] = [
 		match: (argv) => argv[0] === "git" && argv[1] === "commit" && has(argv, "--no-verify"),
 	},
 	{
-		reason: "chmod -R 777",
-		match: (argv) => argv[0] === "chmod" && has(argv, "-R") && has(argv, "777"),
+		reason: "chmod -R 777 (world-writable recursively)",
+		match: (argv) => {
+			const a = stripSudo(argv);
+			return a[0] === "chmod" && has(a, "-R") && has(a, "777");
+		},
 	},
 	{
-		reason: "sudo rm",
-		match: (argv) => argv[0] === "sudo" && argv[1] === "rm",
+		reason: "chown -R (recursive ownership change is a common foot-gun)",
+		match: (argv) => {
+			const a = stripSudo(argv);
+			return a[0] === "chown" && has(a, "-R");
+		},
+	},
+	{
+		// Block `dd if=…` regardless of `of=` — even reading from /dev/sd* into
+		// a file is dangerous enough to pause for confirmation.
+		reason: "dd (raw disk I/O — trivially nukes a drive)",
+		match: (argv) => {
+			const a = stripSudo(argv);
+			return a[0] === "dd" && a.some((x) => x.startsWith("if=") || x.startsWith("of="));
+		},
+	},
+	{
+		reason: "mkfs (filesystem format)",
+		match: (argv) => {
+			const a = stripSudo(argv);
+			return /^mkfs(\.|$)/.test(a[0] ?? "");
+		},
 	},
 	{
 		reason: "fork bomb",
@@ -182,16 +217,35 @@ const DENY_RULES: DenyRule[] = [
 	},
 ];
 
-const PATH_DENY: { matcher: (abs: string) => boolean; reason: string }[] = [
-	{ matcher: (p) => /(^|\/)\.env(\.|$)/.test(p), reason: ".env files protected" },
-	{ matcher: (p) => /(^|\/)credentials(\.|$)/i.test(p), reason: "credentials files protected" },
-	{ matcher: (p) => /\.pem$/i.test(p), reason: "*.pem files protected" },
-	{ matcher: (p) => p.includes(`${HOME}/.ssh/`), reason: "~/.ssh protected" },
+// `reads` = block read/grep as well. For config dirs (~/.claude etc) reads
+// are fine; only writes are dangerous. For raw credential material (.env,
+// *.pem, ssh/aws/gcp secrets) treat reads as exfiltration risk — an agent
+// grepping AWS_SECRET_ACCESS_KEY from .env pulls the secret straight into
+// the prompt context.
+interface PathDenyRule {
+	matcher: (abs: string) => boolean;
+	reason: string;
+	/** Also block read-side tools (read, grep). Default: false (write-only). */
+	reads?: boolean;
+}
+
+const PATH_DENY: PathDenyRule[] = [
+	{ matcher: (p) => /(^|\/)\.env(\.|$)/.test(p), reason: ".env files protected", reads: true },
+	{ matcher: (p) => /(^|\/)credentials(\.|$)/i.test(p), reason: "credentials files protected", reads: true },
+	{ matcher: (p) => /\.pem$/i.test(p), reason: "*.pem files protected", reads: true },
+	{ matcher: (p) => /\.key$/i.test(p), reason: "*.key files protected", reads: true },
+	{ matcher: (p) => /(^|\/)id_(rsa|ed25519|ecdsa|dsa)(\.|$)/.test(p), reason: "SSH private key protected", reads: true },
+	{ matcher: (p) => /(^|\/)\.netrc$/.test(p), reason: "~/.netrc protected (plaintext credentials)", reads: true },
+	{ matcher: (p) => p.includes(`${HOME}/.ssh/`), reason: "~/.ssh protected", reads: true },
+	{ matcher: (p) => p.includes(`${HOME}/.aws/`), reason: "~/.aws protected (credentials)", reads: true },
+	{ matcher: (p) => p.includes(`${HOME}/.config/gcloud/`), reason: "gcloud config protected (credentials)", reads: true },
+	{ matcher: (p) => p.includes(`${HOME}/.kube/`), reason: "~/.kube protected (cluster creds)", reads: true },
+	{ matcher: (p) => p.startsWith(`${HOME}/.openai/`) || p === `${HOME}/.openai`, reason: "~/.openai protected (credentials)", reads: true },
+	{ matcher: (p) => p.startsWith(`${HOME}/.anthropic/`) || p === `${HOME}/.anthropic`, reason: "~/.anthropic protected (credentials)", reads: true },
+	// Config dirs — write-only protection; read is fine and often needed.
 	{ matcher: (p) => p.startsWith(`${HOME}/.claude/`) || p === `${HOME}/.claude`, reason: "~/.claude protected (CLI agent config)" },
 	{ matcher: (p) => p.startsWith(`${HOME}/.codex/`) || p === `${HOME}/.codex`, reason: "~/.codex protected (CLI agent config)" },
 	{ matcher: (p) => p.startsWith(`${HOME}/.gemini/`) || p === `${HOME}/.gemini`, reason: "~/.gemini protected (CLI agent config)" },
-	{ matcher: (p) => p.startsWith(`${HOME}/.openai/`) || p === `${HOME}/.openai`, reason: "~/.openai protected (credentials)" },
-	{ matcher: (p) => p.startsWith(`${HOME}/.anthropic/`) || p === `${HOME}/.anthropic`, reason: "~/.anthropic protected (credentials)" },
 	{ matcher: (p) => p === `${HOME}/.pi/agent/SYSTEM.md`, reason: "~/.pi/agent/SYSTEM.md protected (would clobber pi base prompt)" },
 ];
 
@@ -233,15 +287,17 @@ export default function (pi: ExtensionAPI) {
 			return undefined;
 		}
 
-		if (event.toolName === "write" || event.toolName === "edit") {
-			const rawPath = String((event.input as { path?: string; file_path?: string }).path
-				?? (event.input as { file_path?: string }).file_path ?? "");
+		const isWrite = event.toolName === "write" || event.toolName === "edit";
+		const isRead = event.toolName === "read" || event.toolName === "grep";
+		if (isWrite || isRead) {
+			const rawPath = extractPath(event.input);
 			if (!rawPath) return undefined;
 			const abs = resolve(ctx.cwd, rawPath);
 			for (const rule of PATH_DENY) {
-				if (rule.matcher(abs)) {
-					return { block: true, reason: `safe-deny: ${rule.reason}. Path: ${abs}` };
-				}
+				if (!rule.matcher(abs)) continue;
+				if (isRead && !rule.reads) continue; // read on write-only-protected path is fine
+				const op = isWrite ? "write" : "read";
+				return { block: true, reason: `safe-deny: ${rule.reason} (blocked ${op}). Path: ${abs}` };
 			}
 		}
 
