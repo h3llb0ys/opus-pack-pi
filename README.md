@@ -48,7 +48,7 @@ The installer also pulls selected community packages through native `pi install`
 
 ### Bundled agent profiles
 
-The `agents/` directory ships top-level profiles (`explore`, `verify`, `general-purpose`) that the installed `pi-subagents` extension picks up alongside its own bundled roster (`scout`, `planner`, `worker`, `reviewer`, `context-builder`, `researcher`, `delegate`).
+The `agents/` directory ships two chain-compatible profiles — `explore` (slow, thorough read-only counterpart to `scout`) and `verify` (runs tests/lint/build; no equivalent in the bundled roster) — that the installed `pi-subagents` extension picks up alongside its own defaults (`scout`, `planner`, `worker`, `reviewer`, `context-builder`, `researcher`, `delegate`).
 
 Tier is controlled by the `alias:fast|balanced|slow` hint in each profile's frontmatter; the alias is resolved by `pi-subagents` against its own model map. Swap providers once, every profile follows.
 
@@ -101,7 +101,7 @@ bash "$(pi list | grep opus-pack-pi | awk '{print $NF}')/install.sh"
 The pack is provider-neutral. Minimal working setup for any provider:
 
 1. Make sure `pi` knows your provider (API key in an env var or in `~/.pi/agent/auth.json`).
-2. Configure subagent model aliases in the `pi-subagents` settings block (see that package's README for the exact shape). Every bundled profile (`scout`, `planner`, `worker`, `reviewer`, `explore`, `verify`, `general-purpose`, …) picks its model from that map.
+2. Configure subagent model aliases in the `pi-subagents` settings block (see that package's README for the exact shape). Every bundled profile (`scout`, `planner`, `worker`, `reviewer`, plus this pack's `explore` and `verify`) picks its model from that map.
 
 3. (Optional) Fill `opus-pack.modelRouter.levels` to auto-switch models mid-session based on prompt content. See `_levels_example_*` blocks in `settings.json.example` for provider-specific stubs.
 

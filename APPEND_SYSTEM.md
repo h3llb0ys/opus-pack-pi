@@ -120,7 +120,7 @@ Your own `levels` dict may differ — `/router status` prints the active set.
 
 ### Subagents (via `pi-subagents`)
 
-Subagent orchestration is delegated to the installed [`pi-subagents`](https://github.com/nicobailon/pi-subagents) extension — this pack no longer ships its own. The top-level `agents/` directory contributes profiles (`explore`, `verify`, `general-purpose`) alongside the roster bundled with `pi-subagents` (`scout`, `planner`, `worker`, `reviewer`, `context-builder`, `researcher`, `delegate`).
+Subagent orchestration is delegated to the installed [`pi-subagents`](https://github.com/nicobailon/pi-subagents) extension — this pack no longer ships its own. The top-level `agents/` directory contributes two chain-compatible profiles (`explore` and `verify`) alongside the roster bundled with `pi-subagents` (`scout`, `planner`, `worker`, `reviewer`, `context-builder`, `researcher`, `delegate`). `explore` is the slow/thorough counterpart to `scout`; `verify` runs tests/lint/build and has no equivalent in the bundled roster.
 
 Quick commands (from `pi-subagents`):
 
