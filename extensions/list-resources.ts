@@ -1,5 +1,5 @@
 /**
- * /skills, /extensions, /prompts — list installed resources with descriptions.
+ * /extensions, /prompts — list installed resources with descriptions.
  *
  * /extensions doubles as an opus-pack health dashboard: every OPUS_EXTENSIONS
  * entry is listed with its enabled/disabled state so the user can tell at a
@@ -9,8 +9,8 @@
  * extensions (ours + community), so the command also surfaces non-opus-pack
  * packages that registered extensions.
  *
- * pi has built-in `/reload` and shows resources at session start, but no
- * runtime listing. Mirrors Claude Code's `/skills` UX.
+ * /skills is delegated to pi-skills-menu (full CRUD + preview/insert/edit),
+ * so we no longer register a read-only version here.
  */
 
 import type { ExtensionAPI, ExtensionContext, SlashCommandInfo } from "@mariozechner/pi-coding-agent";
@@ -74,14 +74,6 @@ const buildHealthReport = (pi: ExtensionAPI): string => {
 
 export default function (pi: ExtensionAPI) {
 	if (isExtensionDisabled("list-resources")) return;
-	pi.registerCommand("skills", {
-		description: "List installed skills with descriptions",
-		handler: async (_args, ctx) => {
-			const items = pi.getCommands().filter((c) => c.source === "skill");
-			ctx.ui.notify(formatList("skills", items), "info");
-		},
-	});
-
 	pi.registerCommand("extensions", {
 		description: "List opus-pack extensions with health status + all extension-registered commands",
 		handler: async (_args, ctx: ExtensionContext) => {

@@ -23,7 +23,7 @@ Opinionated bundle расширений для [pi-coding-agent](https://github.
 | `iteration-guard.ts` | Cap на turns в одном agent-run'е (default 40). `/continue` → `+20`. Флаг `--max-turns=<N>`. |
 | `safe-deny.ts` | Без интерактивных confirm-диалогов блокирует `rm -rf /`, `git push --force` на main, `--no-verify` commits, запись в `~/.claude/`, `.env`, `*.pem`, `~/.ssh`. Bypass: `PI_OPUS_PACK_UNSAFE=1`. |
 | `status.ts` | Slash `/status` — сводка (extensions, skills, prompts, MCP tools, model, ctx usage). Live statusline: `cwd · branch · model · ctx:X%`. Footer: `ext:N skills:M mcp:K`. |
-| `list-resources.ts` | Slashes `/skills`, `/extensions`, `/prompts` — listing с описаниями (как в Claude Code). |
+| `list-resources.ts` | Slashes `/extensions`, `/prompts` — listing с описаниями. `/skills` делегирован в `pi-skills-menu` (full CRUD). |
 | `hook-bridge.ts` | Читает блок `hooks` из `settings.json` в формате Claude Code, запускает shell-команды на pi-события (`PreToolUse` / `PostToolUse` / `SessionStart` / `Stop` / `UserPromptSubmit` / `PreCompact`). Позволяет копипастить CC-конфиги и сторонние hook-скрипты. |
 | `claude-md-loader.ts` | Автоподхват `~/.claude/CLAUDE.md` + upward walk `CLAUDE.md` / `AGENTS.md` в system prompt. `/claude-md` — debug. Mtime-cached. |
 | `model-router.ts` | Heuristic auto-switch модели и thinking level по промпту. `/router <level>`, `/router status`, `/router off`. Provider-agnostic. Status slot `↗ model·level`. |

@@ -35,6 +35,8 @@ PACKAGES=(
 	"git:github.com/acarerdinc/pi-secret-guard"
 	"git:github.com/arpagon/pi-rewind"
 	"git:github.com/ttttmr/pi-context"
+	"git:github.com/Kmiyh/pi-skills-menu"
+	"git:github.com/shaftoe/pi-zai-usage"
 )
 for pkg in "${PACKAGES[@]}"; do
 	log remove "$pkg"

@@ -73,6 +73,13 @@ PACKAGES=(
 	# our passive token-breakdown view and adds active context ops
 	# (tag milestones, checkout into compressed summary).
 	"git:github.com/ttttmr/pi-context"
+	# /skills interactive menu — search/preview/insert/create/edit/rename/
+	# delete/toggle. Replaces the read-only /skills listing we used to
+	# register from list-resources.
+	"git:github.com/Kmiyh/pi-skills-menu"
+	# Footer indicator for Z.ai subscription quota. Auto-activates when a
+	# glm-* model is in use; silent otherwise.
+	"git:github.com/shaftoe/pi-zai-usage"
 )
 
 # Anthropic-only: full two-way bridge between pi and Claude Code (uses a

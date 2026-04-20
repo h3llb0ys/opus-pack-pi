@@ -54,7 +54,7 @@ export const OPUS_EXTENSIONS: ExtensionEntry[] = [
 	{ name: "desktop-notify", category: "ui", description: "OS notification on long agent completion" },
 	{ name: "session-summary", category: "ui", description: "Post-turn summary of files changed, commands, errors" },
 	{ name: "cost", category: "ui", description: "/cost dashboard — tokens + price breakdown" },
-	{ name: "list-resources", category: "ui", description: "/skills, /extensions, /prompts slashes" },
+	{ name: "list-resources", category: "ui", description: "/extensions, /prompts slashes (+ extensions health dashboard)" },
 
 	// integrations
 	{ name: "skills", category: "integrations", description: "CC-compat discovery of ~/.claude/skills" },
