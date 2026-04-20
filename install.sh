@@ -54,6 +54,15 @@ PACKAGES=(
 	# or explore tangents without derailing the main agent turn; inject the
 	# result back when ready. Alt+/ to toggle focus.
 	"git:github.com/dbachelder/pi-btw"
+	# ask_user tool with searchable options, multi-select, freeform input,
+	# overlay mode, and a bundled decision-gating skill. Replaces our
+	# homegrown extensions/ask-user.ts.
+	"git:github.com/edlsh/pi-ask-user"
+	# Scans git diffs on `git commit` / `git push` for 30+ secret patterns
+	# (AWS/Azure/GCP/GitHub tokens, JWT, private keys, password assignments)
+	# + agent-powered review for suspicious cases. Third defense-in-depth
+	# layer alongside safe-deny (path) and pi-lens (write content).
+	"git:github.com/acarerdinc/pi-secret-guard"
 )
 
 # Anthropic-only: Claude Max subscription proxy. Skipped unless explicitly requested

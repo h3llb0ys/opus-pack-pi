@@ -73,10 +73,11 @@
 
 - Use pi's built-in `/resume`, `/fork`, `/tree` — they're already implemented in pi-core.
 
-### ask_user tool
+### ask_user tool (via `pi-ask-user`)
 
-- Use `ask_user({question, choices?})` **only** when requirements are genuinely ambiguous and no reasonable assumption is available.
-- Prefer `choices` (2–4 options) over free-form questions.
+- Use `ask_user({question, options?, ...})` **only** when requirements are genuinely ambiguous and no reasonable assumption is available.
+- Prefer `options` (2–4 searchable choices) over free-form questions. Set `allowMultiple: true` for multi-select, `allowFreeform: true` to let the user type a custom answer, `allowComment: true` to collect extra context.
+- Pass `context` for background so the UI can render a split-pane preview.
 - In non-interactive mode (`pi -p`) the tool errors. Fall back to best judgement.
 - Do **not** use it to confirm a plan that's already been agreed.
 

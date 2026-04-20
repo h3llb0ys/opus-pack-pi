@@ -30,7 +30,6 @@ Opinionated bundle расширений для [pi-coding-agent](https://github.
 | `claude-md-loader.ts` | Автоподхват `~/.claude/CLAUDE.md` + upward walk `CLAUDE.md` / `AGENTS.md` в system prompt. `/claude-md` — debug. Mtime-cached. |
 | `model-router.ts` | Heuristic auto-switch модели и thinking level по промпту. `/router <level>`, `/router status`, `/router off`. Provider-agnostic. Status slot `↗ model·level`. |
 | `bash-progress.ts` | Live widget с tail логов и elapsed counter для долгих bash-команд (>2s). Не меняет сам tool. |
-| `ask-user.ts` | LLM-tool `ask_user(question, choices?)` для clarifying questions. Non-interactive → error, fallback на best judgement. |
 | `pi-search.ts` | `/pi-search [query]` — GitHub topic `pi-package` discovery + interactive install + `/reload`. Cache 1h. |
 | `mcp-compress.ts` | Схлопывает verbose MCP tool results в 1-строчные summaries (`ok  memory_save: saved, id=208, deduped`). Recognises saved/id/deduplicated/episode_id/count/error. Config `opus-pack.mcpCompress` (prefixes, maxLineLen, whitelist). |
 | `opus-pack-config.ts` | `/opus-pack` + `Ctrl+Alt+O` — пикер on/off всех extensions этого пакета. Persist в `settings.local.json` под `opus-pack.extensions.disabled`. Есть Save & Reload (без рестарта pi). Slot `off:N` в footer когда что-то выключено. |

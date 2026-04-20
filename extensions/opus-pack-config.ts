@@ -62,7 +62,6 @@ export const OPUS_EXTENSIONS: ExtensionEntry[] = [
 	{ name: "hook-bridge", category: "integrations", description: "CC-format hooks block from settings.json" },
 	{ name: "pi-search", category: "integrations", description: "/pi-search community extension discovery" },
 	{ name: "claude-md-loader", category: "integrations", description: "Auto-load CLAUDE.md / AGENTS.md into system prompt" },
-	{ name: "ask-user", category: "integrations", description: "LLM tool to ask clarifying questions" },
 	{ name: "smart-compact", category: "integrations", description: "Merge compact-hints.md into /compact focus" },
 	{ name: "log-tail", category: "integrations", description: "log_tail/log_kill/log_ps + /bg picker" },
 	{ name: "edit-log", category: "integrations", description: "/edit-log — on-demand list of files edited this session" },
