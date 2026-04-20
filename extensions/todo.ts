@@ -1,7 +1,7 @@
 /**
  * Todo Tracker — multi-step task list with in_progress tracking.
  *
- * Tool `todo` (add/start/done/clear) for the LLM.
+ * Tool `todo` (add/start/done/dispatch/list/clear) for the LLM.
  * Command /todo for user inspection.
  * Widget shows active tasks above editor.
  * State persists via appendEntry for crash resilience.
@@ -10,10 +10,23 @@
  * task back to pending. Mirrors Claude Code's TodoWrite discipline so the
  * model has a familiar single-active cursor.
  *
- * Enforcement: a single steering nag fires only after the model racks
- * up several modifying operations without any `in_progress` task — the
- * actual signal of an unstructured multi-step run. One-shot edits stay
- * silent; the nag's wording adapts to whether there are todos at all.
+ * Parallel execution: `dispatch` flips items into `dispatched` (work has
+ * been delegated to subagents via the pi-subagents `subagent` tool).
+ * Multiple items may be `dispatched` simultaneously without violating
+ * the single-active invariant on `in_progress`. Recovery: `start` on a
+ * dispatched item flips it back into `in_progress` so the main agent
+ * takes the work over (e.g. when a subagent failed or timed out).
+ *
+ * Enforcement:
+ *   - Activity nag: a single steering nag fires when the model racks up
+ *     modifying operations without any active task. "Active" means
+ *     in_progress OR dispatched — there is no point nagging while work
+ *     is delegated.
+ *   - Orphan-dispatched nag: if the same set of dispatched ids stays
+ *     unchanged for several `before_agent_start` ticks, remind the model
+ *     to either close them with `todo done` or take them over with
+ *     `todo start`. Avoids silently hung plans when a subagent's result
+ *     never gets reconciled.
  *
  * Cross-extension API (event bus):
  *   emit "opus-pack:todo:replace"  { items: Array<{text, done?}>, source? }
@@ -32,7 +45,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { isExtensionDisabled } from "../lib/settings.js";
 import { renderChecklist, type ChecklistItem } from "../lib/checklist.js";
 
-type Status = "pending" | "in_progress" | "done";
+type Status = "pending" | "in_progress" | "dispatched" | "done";
 
 interface TodoEntry {
 	id: string;
@@ -69,11 +82,18 @@ const MODIFYING_BASH_PATTERNS = [
 const isModifyingBash = (cmd: string): boolean =>
 	MODIFYING_BASH_PATTERNS.some((p) => p.test(cmd));
 
-// How many modifying operations without an `in_progress` task we allow
-// before nudging the model. Set to 2 so a one-shot edit stays silent
-// while a pattern of repeated modifications (the actual signal of a
-// multi-step run) triggers a single reminder.
+// How many modifying operations without an active (in_progress OR
+// dispatched) task we allow before nudging the model. Set to 2 so a
+// one-shot edit stays silent while a pattern of repeated modifications
+// (the actual signal of a multi-step run) triggers a single reminder.
 const MODIFYING_CALLS_BEFORE_START_NAG = 2;
+
+// Number of consecutive `before_agent_start` ticks the same set of
+// dispatched ids must persist before the orphan-dispatched nag fires.
+// Three ticks ≈ several model turns of inactivity on those items —
+// long enough to mean "subagent return was probably forgotten" without
+// firing on a single slow turn.
+const ORPHAN_DISPATCH_TURNS_THRESHOLD = 3;
 
 export default function (pi: ExtensionAPI) {
 	if (isExtensionDisabled("todo")) return;
@@ -83,6 +103,10 @@ export default function (pi: ExtensionAPI) {
 	// Enforcement state per agent run.
 	let hasNaggedInProgress = false;
 	let modifyingCallsWithoutInProgress = 0;
+	// Orphan-dispatched detection: track the dispatched-set across turns.
+	let dispatchedSnapshotIds: Set<string> = new Set();
+	let dispatchedStaleTurns = 0;
+	let hasNaggedOrphaned = false;
 
 	const persist = () => pi.appendEntry("todo", { items, nextId });
 
@@ -101,6 +125,18 @@ export default function (pi: ExtensionAPI) {
 	const resetEnforcement = () => {
 		hasNaggedInProgress = false;
 		modifyingCallsWithoutInProgress = 0;
+		dispatchedSnapshotIds = new Set();
+		dispatchedStaleTurns = 0;
+		hasNaggedOrphaned = false;
+	};
+
+	const dispatchedIdSet = (): Set<string> =>
+		new Set(items.filter((t) => t.status === "dispatched").map((t) => t.id));
+
+	const setsEqual = (a: Set<string>, b: Set<string>): boolean => {
+		if (a.size !== b.size) return false;
+		for (const v of a) if (!b.has(v)) return false;
+		return true;
 	};
 
 	const startInternal = (id: string) => {
@@ -150,7 +186,9 @@ export default function (pi: ExtensionAPI) {
 			items.push({ id: String(nextId++), text, status: inc.done ? "done" : "pending" });
 		}
 		// Fresh plan installed externally: reset nag state so enforcement
-		// starts over against the new list.
+		// starts over against the new list. Orphan tracker auto-resets
+		// on the next before_agent_start tick because the dispatched-set
+		// will differ from the prior snapshot (empty for a fresh plan).
 		hasNaggedInProgress = false;
 		modifyingCallsWithoutInProgress = 0;
 		persist();
@@ -189,20 +227,24 @@ export default function (pi: ExtensionAPI) {
 		}
 		if (!isModifying) return;
 
-		// Single nag: detect sustained modifying activity without a task
-		// in_progress. This replaces the old zero-threshold "first-edit"
+		// Single nag: detect sustained modifying activity without an
+		// active task. This replaces the old zero-threshold "first-edit"
 		// nag — small one-shot fixes (a single edit / write / mkdir)
 		// should NOT trigger a discipline reminder. Only when the model
-		// racks up several modifying operations without any todo cursor
+		// racks up several modifying operations without any active todo
 		// do we tap on the shoulder.
+		//
+		// "Active" means in_progress OR dispatched: a delegated step
+		// counts as active work because the model is intentionally
+		// waiting on a subagent, not "modifying without a plan".
 		//
 		// Two shapes covered by the same counter:
 		//   a) No todos at all → nag suggests `todo add` + `todo start`.
-		//   b) Todos exist but none is in_progress → nag suggests only
+		//   b) Todos exist but none is active → nag suggests only
 		//      `todo start <id>` (user has already planned).
-		const hasInProgress = items.some((t) => t.status === "in_progress");
+		const hasActive = items.some((t) => t.status === "in_progress" || t.status === "dispatched");
 		const hasOpenWork = items.some((t) => t.status !== "done");
-		if (hasInProgress) {
+		if (hasActive) {
 			modifyingCallsWithoutInProgress = 0;
 			return;
 		}
@@ -227,22 +269,24 @@ export default function (pi: ExtensionAPI) {
 		description:
 			"Multi-step task list with an in_progress cursor. Use BEFORE editing for 3+ step work. " +
 			"Flow: add items → start one → do work → done → start next. Only ONE task may be in_progress at a time. " +
-			"Both `add` and `done` accept a batch (`texts: string[]` / `ids: string[]`) so the entire plan or a closing wave of completed steps can land in a single tool call.",
-		promptSnippet: "todo add/start/done/clear — plan multi-step work, single in_progress task; add+done accept batches",
+			"Both `add` and `done` accept a batch (`texts: string[]` / `ids: string[]`) so the entire plan or a closing wave of completed steps can land in a single tool call. " +
+			"For independent steps, use `dispatch ids:[...]` to mark them as delegated to subagents (via the pi-subagents `subagent` tool); call `done ids:[...]` once results return, or `start id:N` to take a stuck dispatch over locally.",
+		promptSnippet: "todo add/start/done/dispatch/clear — plan multi-step work, single in_progress task; add+done accept batches; dispatch flips items into 'delegated to subagent' state",
 		promptGuidelines: [
 			"When you already know all the steps, call `todo add` ONCE with `texts: [...]` to drop the whole plan in one shot — don't loop one-add-per-step.",
 			"Keep exactly one task in_progress at a time — start the next before you work on it.",
 			"Mark a task done as soon as you finish it; if several adjacent steps wrap up together, `todo done` with `ids: [...]` flushes them in one call.",
+			"For independent steps, parallelize: `todo dispatch ids:[...]` then `subagent({tasks:[...], concurrency:N})`; `todo done ids:[...]` after results return. If a subagent fails or times out, `todo start id:N` flips dispatched → in_progress so you take that step over locally.",
 		],
 		parameters: Type.Object({
-			action: StringEnum(["add", "start", "done", "list", "clear"] as const),
+			action: StringEnum(["add", "start", "done", "dispatch", "list", "clear"] as const),
 			text: Type.Optional(Type.String({ description: "Single task text (for add). Use 'texts' for a batch." })),
 			texts: Type.Optional(Type.Array(Type.String(), {
 				description: "Batch task texts (for add). Adds every entry in order, sharing one tool call. Prefer this when planning 3+ steps upfront.",
 			})),
-			id: Type.Optional(Type.String({ description: "Single task ID (for start/done). Use 'ids' to mark multiple done in one call." })),
+			id: Type.Optional(Type.String({ description: "Single task ID (for start/done/dispatch). Use 'ids' to operate on multiple in one call (done/dispatch only)." })),
 			ids: Type.Optional(Type.Array(Type.String(), {
-				description: "Batch task IDs for `done` only — marks every listed task as done in one call. `start` keeps the single-active invariant and rejects batches.",
+				description: "Batch task IDs for `done` and `dispatch` — marks every listed task in one call. `start` keeps the single-active invariant and rejects batches.",
 			})),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -347,8 +391,56 @@ export default function (pi: ExtensionAPI) {
 						details: { items },
 					};
 				}
+				case "dispatch": {
+					// Same forgiving merge + trim + dedupe shape as `done`,
+					// since the model usually arrives at this point with the
+					// same kind of "I have a list of step ids" mental model.
+					const rawIds: string[] = [];
+					if (params.ids) rawIds.push(...params.ids);
+					if (params.id) rawIds.push(params.id);
+					const ids = [...new Set(rawIds.map((s) => String(s).trim()).filter((s) => s.length > 0))];
+					if (ids.length === 0) throw new Error("todo dispatch requires 'id' or non-empty 'ids'");
+					const dispatched: TodoEntry[] = [];
+					const skipped: Array<{ id: string; reason: string }> = [];
+					for (const id of ids) {
+						const target = items.find((t) => t.id === id);
+						if (!target) {
+							skipped.push({ id, reason: "not found" });
+							continue;
+						}
+						if (target.status === "done") {
+							skipped.push({ id, reason: "already done" });
+							continue;
+						}
+						if (target.status === "dispatched") {
+							skipped.push({ id, reason: "already dispatched" });
+							continue;
+						}
+						// pending and in_progress both accepted — model may
+						// be promoting current local work into a subagent
+						// flow, which is a legitimate transition.
+						target.status = "dispatched";
+						dispatched.push(target);
+					}
+					if (dispatched.length === 0 && skipped.length > 0) {
+						throw new Error(`todo dispatch: ${skipped.map((s) => `#${s.id} (${s.reason})`).join(", ")}`);
+					}
+					persist();
+					renderWidget(ctx, items);
+					emitChanged();
+					// The dispatched-set just grew. The orphan-detection
+					// state will reconcile on the next before_agent_start
+					// tick (set comparison resets the counter naturally).
+					const idList = dispatched.map((e) => `#${e.id}`).join(", ");
+					const skipLine = skipped.length > 0 ? ` Skipped: ${skipped.map((s) => `#${s.id} (${s.reason})`).join(", ")}.` : "";
+					const followup = ` Now call subagent({tasks:[...], concurrency:${dispatched.length}}) for each, then \`todo done ids:[${dispatched.map((e) => e.id).join(",")}]\` when they return. If a subagent fails, \`todo start id:N\` flips dispatched → in_progress so you take it over.`;
+					return {
+						content: [{ type: "text", text: `Dispatched ${dispatched.length}: ${idList}.${skipLine}${followup}` }],
+						details: { items },
+					};
+				}
 				case "list": {
-					const sym = (s: Status) => (s === "done" ? "✓" : s === "in_progress" ? "▶" : "○");
+					const sym = (s: Status) => (s === "done" ? "✓" : s === "in_progress" ? "▶" : s === "dispatched" ? "⇄" : "○");
 					const list = items.map((t) => `${sym(t.status)} #${t.id} ${t.text}`).join("\n");
 					return { content: [{ type: "text", text: list || "(empty)" }], details: { items } };
 				}
@@ -365,9 +457,43 @@ export default function (pi: ExtensionAPI) {
 
 	// Refresh the widget on every turn and keep lastCtx fresh so event-bus
 	// listeners can re-render widgets when plan-mode mutates state.
+	// Also drives the orphan-dispatched detector — if the same set of
+	// dispatched ids survives several ticks unchanged, nag the model.
 	pi.on("before_agent_start", async (_event, ctx) => {
 		lastCtx = ctx;
 		renderWidget(ctx, items);
+
+		const current = dispatchedIdSet();
+		if (current.size === 0) {
+			// No dispatched work — fully reset the detector so the next
+			// dispatch starts a fresh count.
+			dispatchedSnapshotIds = current;
+			dispatchedStaleTurns = 0;
+			hasNaggedOrphaned = false;
+			return;
+		}
+		if (setsEqual(current, dispatchedSnapshotIds)) {
+			dispatchedStaleTurns++;
+		} else {
+			dispatchedSnapshotIds = current;
+			dispatchedStaleTurns = 1;
+			hasNaggedOrphaned = false;
+		}
+		if (!hasNaggedOrphaned && dispatchedStaleTurns >= ORPHAN_DISPATCH_TURNS_THRESHOLD) {
+			hasNaggedOrphaned = true;
+			const idList = [...current].map((id) => `#${id}`).join(", ");
+			pi.sendMessage(
+				{
+					customType: "todo-nag",
+					content:
+						`⚠ You have ${current.size} task(s) still in \`dispatched\` state for several turns: ${idList}.\n` +
+						"If subagents have already returned, call `todo done ids:[...]` to close them.\n" +
+						"If a subagent failed or timed out, call `todo start id:<N>` to take the task over locally.",
+					display: true,
+				},
+				{ deliverAs: "steer" },
+			);
+		}
 	});
 
 	pi.registerCommand("todo", {
@@ -377,7 +503,7 @@ export default function (pi: ExtensionAPI) {
 				ctx.ui.notify("(no tasks)", "info");
 				return;
 			}
-			const sym = (s: Status) => (s === "done" ? "✓" : s === "in_progress" ? "▶" : "○");
+			const sym = (s: Status) => (s === "done" ? "✓" : s === "in_progress" ? "▶" : s === "dispatched" ? "⇄" : "○");
 			ctx.ui.notify(items.map((t) => `${sym(t.status)} #${t.id} ${t.text}`).join("\n"), "info");
 		},
 	});
