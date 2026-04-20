@@ -28,6 +28,14 @@
 - For multi-step work (3+ steps), create `todo` entries first, then `todo start <id>` → work → `todo done <id>`.
 - **Exactly one `in_progress` task at a time.** Starting a new one returns the previous active task to `pending`.
 - Don't use `todo` for trivial single-file, single-edit work.
+- Batches: `todo add texts:[...]` to drop the entire plan in one call; `todo done ids:[...]` to flush a closing wave of completed steps.
+
+### Parallel execution (todo dispatch + subagents)
+
+- Independent steps that can run concurrently: `todo dispatch ids:[3,5,7]` flips them into `dispatched`, then call `subagent({tasks:[...], concurrency:N})` (via the installed `pi-subagents` extension) with one task per id. After subagents return, close the batch with `todo done ids:[3,5,7]`.
+- `dispatched` does NOT consume the single-active `in_progress` slot — you can have one local `in_progress` task plus N delegated `dispatched` tasks at the same time.
+- **Recovery**: if a subagent fails or times out, `todo start id:<N>` flips that single dispatched task back into `in_progress` so you take it over locally.
+- **Orphan watchdog**: if the same set of `dispatched` ids sits unchanged for several turns, the todo extension nags you to either `done` them (subagents already returned) or `start` them (take over). Don't ignore it — that's how plans hang silently.
 
 ### Long-running tasks
 

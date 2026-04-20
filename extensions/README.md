@@ -52,11 +52,16 @@ Read-only exploration mode. Produce a numbered plan, call `exit_plan_mode(plan, 
 
 ### `todo.ts`
 
-Task list with `in_progress` / `pending` / `done` states and a single-active invariant (like Claude Code's `TodoWrite`).
+Task list with `pending` / `in_progress` / `dispatched` / `done` states. Single-active invariant on `in_progress` (like Claude Code's `TodoWrite`); `dispatched` is the parallel lane for work delegated to subagents.
 
-- **Tool:** `todo(action: add|start|done|list|clear, text?, texts?, id?, ids?)`. `add` accepts a single `text` or a batch via `texts: string[]`; `done` accepts a single `id` or a batch via `ids: string[]` (drops a closing wave of completed steps in one call). `start` keeps the single-active invariant and rejects batches.
+- **Tool:** `todo(action: add|start|done|dispatch|list|clear, text?, texts?, id?, ids?)`.
+  - `add` accepts a single `text` or a batch via `texts: string[]`.
+  - `done` accepts a single `id` or a batch via `ids: string[]` (drops a closing wave of completed steps in one call).
+  - `dispatch ids:[...]` flips items into `dispatched`, signalling that work has been delegated to subagents (via the `pi-subagents` `subagent` tool). Multiple items may be `dispatched` simultaneously without violating the single-active invariant on `in_progress`.
+  - `start` keeps the single-active invariant and rejects batches. Calling `start` on a `dispatched` item flips it into `in_progress` — the recovery path when a subagent fails or times out and the main agent takes the work over locally.
 - **Slash:** `/todo`.
-- **UI:** widget above the prompt + footer badge.
+- **UI:** widget above the prompt + footer badge. Glyphs: `□` pending, `▶` in_progress, `⇄` dispatched, `■` done. Footer badge prefixes `▶`, `⇄N`, or `▶+⇄N` depending on what's active.
+- **Nag:** a single steering nag fires when the model racks up modifying operations without any active task (in_progress or dispatched). A separate orphan-dispatched nag fires if the same set of `dispatched` ids stays unchanged for several turns — reminding the model to either close them with `done` or take them over with `start`.
 
 ### `model-router.ts`
 
