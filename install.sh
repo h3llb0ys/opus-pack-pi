@@ -46,6 +46,10 @@ PACKAGES=(
 	# Static code-quality pipeline on every write/edit: LSP, linters, formatters,
 	# tree-sitter rules, secrets scanning.
 	"git:github.com/apmantza/pi-lens"
+	# Hash-anchored read/grep/edit. Every line carries a LINE#HASH prefix so
+	# edits reference anchors instead of raw text — no "string not found", no
+	# ambiguous matches, stale reads fail hard. Ported from oh-my-pi.
+	"git:github.com/RimuruW/pi-hashline-edit"
 )
 
 # Anthropic-only: Claude Max subscription proxy. Skipped unless explicitly requested
