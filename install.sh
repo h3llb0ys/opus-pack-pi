@@ -50,6 +50,10 @@ PACKAGES=(
 	# edits reference anchors instead of raw text — no "string not found", no
 	# ambiguous matches, stale reads fail hard. Ported from oh-my-pi.
 	"git:github.com/RimuruW/pi-hashline-edit"
+	# /btw — parallel side-conversation sub-session. Ask clarifying questions
+	# or explore tangents without derailing the main agent turn; inject the
+	# result back when ready. Alt+/ to toggle focus.
+	"git:github.com/dbachelder/pi-btw"
 )
 
 # Anthropic-only: Claude Max subscription proxy. Skipped unless explicitly requested
