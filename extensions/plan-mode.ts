@@ -26,9 +26,52 @@ import { isExtensionDisabled, loadOpusPackSection } from "../lib/settings.js";
 interface PlanModeConfig {
 	autoSave: boolean;
 	dir: string;
+	mcpPattern?: string;
+	gateGranularity?: "tool" | "server";
+	nonInteractivePolicy?: "allow" | "deny";
 }
 
-const DEFAULT_PLAN_CFG: PlanModeConfig = { autoSave: false, dir: ".pi/plans" };
+const DEFAULT_MCP_PATTERN = "^mcp__";
+const DEFAULT_PLAN_CFG: PlanModeConfig = {
+	autoSave: false,
+	dir: ".pi/plans",
+	mcpPattern: DEFAULT_MCP_PATTERN,
+	gateGranularity: "tool",
+	nonInteractivePolicy: "deny",
+};
+
+const compileMcpPattern = (pattern?: string): RegExp => {
+	try { return new RegExp(pattern ?? DEFAULT_MCP_PATTERN, "i"); } catch { return new RegExp(DEFAULT_MCP_PATTERN, "i"); }
+};
+
+// `server` granularity assumes canonical pi MCP convention `mcp__<server>__<tool>`.
+// Names not matching that shape fall through to full-name granularity.
+const gateKey = (toolName: string, granularity: "tool" | "server" | undefined): string => {
+	if (granularity !== "server") return toolName;
+	const parts = toolName.split("__");
+	return parts.length >= 3 && parts[0] === "mcp" ? `${parts[0]}__${parts[1]}` : toolName;
+};
+
+// Redact values of fields whose names smell sensitive, for the approval dialog
+// preview only. Best-effort shallow pass; untrusted MCP args shouldn't leak
+// credentials into the TUI title.
+const SENSITIVE_KEY = /^(.*(token|api[_-]?key|password|passwd|secret|authorization|auth|cookie|session).*)$/i;
+const redactPreview = (input: unknown): string => {
+	try {
+		const redact = (v: unknown): unknown => {
+			if (Array.isArray(v)) return v.map(redact);
+			if (v && typeof v === "object") {
+				const out: Record<string, unknown> = {};
+				for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+					out[k] = SENSITIVE_KEY.test(k) ? "[redacted]" : redact(val);
+				}
+				return out;
+			}
+			return v;
+		};
+		return JSON.stringify(redact(input ?? {})).slice(0, 200);
+	} catch { return ""; }
+};
 
 const slugify = (s: string): string =>
 	s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 40) || "plan";
@@ -134,7 +177,7 @@ const listPlanFiles = (cwd: string, dirRel: string): PlanFileInfo[] => {
 	return out.sort((a, b) => b.mtimeMs - a.mtimeMs);
 };
 
-const PLAN_MODE_TOOLS = ["read", "bash", "grep", "find", "ls"];
+const PLAN_MODE_BASE_TOOLS = ["read", "bash", "grep", "find", "ls"];
 const NORMAL_MODE_TOOLS = ["read", "bash", "edit", "write"];
 
 // Read-only allowlist of command names that may appear in any segment
@@ -229,6 +272,47 @@ export default function (pi: ExtensionAPI) {
 	if (isExtensionDisabled("plan-mode")) return;
 	let planModeEnabled = false;
 	let executionMode = false;
+	// Per-plan-session approval cache. Cleared on plan toggle / finalize /
+	// resume. Keys depend on gateGranularity: full tool name ("tool") or
+	// server prefix ("server"). Not persisted — decisions expire with the
+	// session for safety.
+	const planApprovals = new Map<string, "allow" | "deny">();
+	// Config + MCP tool list are snapshotted on plan entry to avoid repeated
+	// `loadOpusPackSection` + registry scans on every tool_call, and to pin
+	// behaviour against mid-session config edits.
+	let planCfgSnapshot: PlanModeConfig | null = null;
+	let planMcpTools: string[] = [];
+
+	const collectMcpTools = (cfg: PlanModeConfig): string[] => {
+		const re = compileMcpPattern(cfg.mcpPattern);
+		const mcp: string[] = [];
+		try {
+			for (const t of pi.getAllTools()) {
+				if (re.test(t.name)) mcp.push(t.name);
+			}
+		} catch { /* best-effort: older pi versions or registry not ready */ }
+		return mcp;
+	};
+
+	const snapshotPlanCfg = (): PlanModeConfig => {
+		const cfg = loadOpusPackSection("planMode", DEFAULT_PLAN_CFG);
+		planCfgSnapshot = cfg;
+		planMcpTools = collectMcpTools(cfg);
+		return cfg;
+	};
+
+	const clearPlanCfg = () => {
+		planCfgSnapshot = null;
+		planMcpTools = [];
+	};
+
+	const buildPlanModeTools = (): string[] => {
+		const cfg = planCfgSnapshot ?? snapshotPlanCfg();
+		// Re-scan registry every call so tools registered between plan-entry
+		// and this call are picked up. Cheap: single getAllTools() iteration.
+		planMcpTools = collectMcpTools(cfg);
+		return [...PLAN_MODE_BASE_TOOLS, ...planMcpTools];
+	};
 	// Path to the .pi/plans/<slug>.md file currently driving execution. Set
 	// when exit_plan_mode persists and when /plan-resume picks an old plan up.
 	// Used to write done_steps back into the file as todo progresses, so a
@@ -275,6 +359,8 @@ export default function (pi: ExtensionAPI) {
 		writebackProgress(status);
 		executionMode = false;
 		activePlanPath = null;
+		planApprovals.clear();
+		clearPlanCfg();
 		pi.setActiveTools(NORMAL_MODE_TOOLS);
 		updateStatus(ctx);
 		persist();
@@ -285,10 +371,17 @@ export default function (pi: ExtensionAPI) {
 		planModeEnabled = !planModeEnabled;
 		executionMode = false;
 		activePlanPath = null;
+		planApprovals.clear();
 		if (planModeEnabled) {
-			pi.setActiveTools(PLAN_MODE_TOOLS);
-			ctx.ui.notify(`Plan mode ON. Tools: ${PLAN_MODE_TOOLS.join(", ")}`, "info");
+			snapshotPlanCfg();
+			const tools = buildPlanModeTools();
+			pi.setActiveTools(tools);
+			const MAX = 15;
+			const shown = tools.slice(0, MAX).join(", ");
+			const rest = tools.length > MAX ? `, +${tools.length - MAX} more` : "";
+			ctx.ui.notify(`Plan mode ON. Tools: ${shown}${rest}`, "info");
 		} else {
+			clearPlanCfg();
 			pi.setActiveTools(NORMAL_MODE_TOOLS);
 			ctx.ui.notify("Plan mode OFF. Full access.", "info");
 		}
@@ -380,6 +473,8 @@ export default function (pi: ExtensionAPI) {
 			planModeEnabled = false;
 			executionMode = true;
 			activePlanPath = picked.path;
+			planApprovals.clear();
+			clearPlanCfg();
 			pi.setActiveTools(NORMAL_MODE_TOOLS);
 			pi.events.emit("opus-pack:todo:replace", { items: todoPayload, source: "plan-resume" });
 			updateStatus(ctx);
@@ -447,6 +542,8 @@ export default function (pi: ExtensionAPI) {
 				// Non-interactive: auto-approve.
 				planModeEnabled = false;
 				executionMode = steps.length > 0;
+				planApprovals.clear();
+				clearPlanCfg();
 				installSteps();
 				pi.setActiveTools(NORMAL_MODE_TOOLS);
 				updateStatus(ctx);
@@ -482,6 +579,8 @@ export default function (pi: ExtensionAPI) {
 			}
 			planModeEnabled = false;
 			executionMode = steps.length > 0;
+			planApprovals.clear();
+			clearPlanCfg();
 			installSteps();
 			pi.setActiveTools(NORMAL_MODE_TOOLS);
 			updateStatus(ctx);
@@ -505,11 +604,55 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.on("tool_call", async (event) => {
-		if (!planModeEnabled || event.toolName !== "bash") return;
-		const cmd = String((event.input as { command?: string }).command ?? "");
-		if (!isSafeCommand(cmd)) {
-			return { block: true, reason: `plan-mode: blocked (not allowlisted). Use /plan to disable.\nCommand: ${cmd}` };
+	pi.on("tool_call", async (event, ctx) => {
+		if (!planModeEnabled) return;
+		if (event.toolName === "bash") {
+			const cmd = String((event.input as { command?: string }).command ?? "");
+			if (!isSafeCommand(cmd)) {
+				return { block: true, reason: `plan-mode: blocked (not allowlisted). Use /plan to disable.\nCommand: ${cmd}` };
+			}
+			return;
+		}
+		const cfg = planCfgSnapshot ?? snapshotPlanCfg();
+		const mcpRe = compileMcpPattern(cfg.mcpPattern);
+		if (!mcpRe.test(event.toolName)) return;
+
+		const key = gateKey(event.toolName, cfg.gateGranularity);
+		const cached = planApprovals.get(key);
+		if (cached === "allow") return;
+		if (cached === "deny") {
+			return { block: true, reason: `plan-mode: ${event.toolName} denied for this plan session` };
+		}
+
+		if (!ctx.hasUI) {
+			if (cfg.nonInteractivePolicy === "allow") return;
+			return { block: true, reason: `plan-mode: ${event.toolName} blocked (no UI for approval)` };
+		}
+
+		const preview = redactPreview(event.input);
+		const title = preview
+			? `Plan mode — allow ${event.toolName}?  ${preview}`
+			: `Plan mode — allow ${event.toolName}?`;
+		const choice = await ctx.ui.select(title, [
+			"Allow (session)",
+			"Allow once",
+			"Deny (session)",
+			"Deny once",
+		]);
+		switch (choice) {
+			case "Allow (session)":
+				planApprovals.set(key, "allow");
+				return;
+			case "Allow once":
+				return;
+			case "Deny (session)":
+				planApprovals.set(key, "deny");
+				return { block: true, reason: `plan-mode: user denied ${event.toolName} (session)` };
+			case "Deny once":
+				return { block: true, reason: `plan-mode: user declined ${event.toolName}` };
+			case undefined:
+			default:
+				return { block: true, reason: `plan-mode: approval dialog cancelled for ${event.toolName}` };
 		}
 	});
 
@@ -534,11 +677,20 @@ export default function (pi: ExtensionAPI) {
 			);
 		}
 		if (planModeEnabled) {
+			// Re-assert active tools every turn — other extensions (e.g.
+			// deferred-tools) may have rewritten the list via their own
+			// setActiveTools between turns. Idempotent; cheap.
+			try { pi.setActiveTools(buildPlanModeTools()); } catch { /* best-effort */ }
+
+			const mcpLine = planMcpTools.length > 0
+				? `MCP tools available (${planMcpTools.length}) — each call is gated by a per-session user approval dialog. Prefer read-only MCP (e.g. search, read, recall) for exploration.`
+				: `No MCP tools detected.`;
 			return {
 				message: {
 					customType: "plan-mode-context",
 					content: `[PLAN MODE ACTIVE]
-Read-only exploration. Tools: read, bash, grep, find, ls. No edit/write.
+Read-only exploration. Base tools: ${PLAN_MODE_BASE_TOOLS.join(", ")}. No edit/write.
+${mcpLine}
 Create a numbered plan under a "Plan:" header. Do NOT make changes.`,
 					display: false,
 				},
@@ -616,6 +768,8 @@ Create a numbered plan under a "Plan:" header. Do NOT make changes.`,
 		if (choice === "Execute the plan") {
 			planModeEnabled = false;
 			executionMode = steps.length > 0;
+			planApprovals.clear();
+			clearPlanCfg();
 			if (steps.length > 0) {
 				pi.events.emit("opus-pack:todo:replace", {
 					items: steps.map((s) => ({ text: s })),
@@ -683,7 +837,10 @@ Create a numbered plan under a "Plan:" header. Do NOT make changes.`,
 			}
 		}
 
-		if (planModeEnabled) pi.setActiveTools(PLAN_MODE_TOOLS);
+		if (planModeEnabled) {
+			snapshotPlanCfg();
+			pi.setActiveTools(buildPlanModeTools());
+		}
 		updateStatus(ctx);
 	});
 }
