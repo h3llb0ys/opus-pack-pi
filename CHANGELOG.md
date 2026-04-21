@@ -17,6 +17,8 @@ Reverse-chronological. Versions track git tags. Format inspired by [Keep a Chang
   - `status.ts` footer slot renamed `90-opus` → `90-pack`.
   - `claude-total-memory` references removed. Bring your own MCP via `~/.pi/agent/mcp.json`.
   - `meridian` (Claude-Max proxy) moved behind `ANTHROPIC=1 ./install.sh`.
+- **Plan-mode MCP gate.** While plan mode is active, every MCP tool invocation (pi-mcp-adapter direct tools, unified `mcp` proxy, or anything matching `opus-pack.planMode.mcpPattern`) prompts the user with `Allow (session) / Allow once / Deny (session) / Deny once`. Session decisions are cached in-memory only and cleared on every exit from plan mode, finalize, `/plan-resume`, and `exit_plan_mode`. Headless runs fall back to `opus-pack.planMode.nonInteractivePolicy` (default `deny`). Approval-dialog previews redact values of sensitive-looking keys (`token`, `api_key`, `password`, `secret`, `auth`, `cookie`, `session`) so MCP args can't leak into the TUI.
+- **`/opus-pack` drift warning.** The config modal and statusline flag `extensions/*.ts` files that exist on disk but aren't registered in `OPUS_EXTENSIONS`, so new extensions can't silently ship uncategorized.
 - **`/plan-resume`** — reload a saved plan from `.pi/plans/*.md` across sessions. Picker when called without args, substring match with args.
 - **Plan progress writeback.** `turn_end` writes `done_steps` back into the plan file's frontmatter as `[DONE:N]` markers land. `finalizePlan` flips `status` to `completed` or `closed`.
 - **`/plan-close`** — manual escape hatch when the model forgets `[DONE:N]` on the last step.
@@ -41,6 +43,7 @@ Reverse-chronological. Versions track git tags. Format inspired by [Keep a Chang
 - **Log-tail line splitting.** `readNewBytes` trims the read buffer back to the last newline when truncated, so a line split across two pushes arrives whole on the second push.
 - **File-commands symlink safety.** `lstatSync` + `MAX_WALK_DEPTH` prevent infinite recursion on symlink loops (`.claude/commands/loop → ..`).
 - **Plan-mode stale checklist.** On the next user prompt after a plan completes, the widget and status slot now clear even if `agent_end` missed the `every(completed)` check.
+- **Plan-mode false-positive on quoted args.** `HARD_BLOCK_PATTERNS` used to match the whole command string, so `grep 'curl …'` tripped the curl denylist on its own argument. Quoted-string literals are now blanked before the scan; command substitution (`$(…)`, backticks) stays visible to the denylist.
 - **`install.sh` deep-merge.** The `opus-pack` block is deep-merged via `jq *` instead of being overwritten. User-added permissions rules and `subagent.modelAlias` entries survive `./update.sh`.
 
 ### Changed
