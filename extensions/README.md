@@ -49,6 +49,10 @@ Read-only exploration mode. Produce a numbered plan, call `exit_plan_mode(plan, 
 - **Shortcut:** `Ctrl+Alt+P` (also `Alt+Tab`, `Super+P`).
 - **Flag:** `--plan` starts pi directly in plan mode.
 - **Persistence:** plans saved under `.pi/plans/<ts>-<slug>.md` when `save=true` or `opus-pack.planMode.autoSave=true`.
+- **MCP approval gate.** While plan mode is active, every MCP tool invocation prompts the user with `Allow (session) / Allow once / Deny (session) / Deny once`. Decisions cached in-memory for the plan-session lifetime only; never persisted, cleared on every exit (`/plan` toggle, `exit_plan_mode`, `finalizePlan`, `/plan-resume`). Detection covers (a) `pi-mcp-adapter` direct tools via `sourceInfo`, regardless of its `toolPrefix` setting (`server` / `short` / `none`), (b) the unified proxy tool literally named `mcp`, and (c) any tool whose name matches `opus-pack.planMode.mcpPattern`. Base tools (`read`, `bash`, `grep`, `find`, `ls`) are always excluded so a misnamed MCP tool cannot shadow them. Approval-dialog previews redact values of sensitive-looking keys (`token`, `api_key`, `password`, `secret`, `auth`, `cookie`, `session`).
+- **Config:** `opus-pack.planMode.{autoSave,dir,mcpPattern,gateGranularity,nonInteractivePolicy}`.
+  - `gateGranularity`: `"tool"` (default — each tool prompts separately) or `"server"` (one approval covers every tool under the same `mcp__<server>__*` prefix; auto-degrades to per-tool with a warning when detected names don't fit that shape).
+  - `nonInteractivePolicy`: `"allow"` or `"deny"` (default) — governs MCP calls when `ctx.hasUI` is false (print / RPC / headless).
 
 ### `todo.ts`
 
@@ -192,6 +196,7 @@ Toggle any extension in the pack at runtime.
 - **Persistence:** `~/.pi/agent/settings.local.json` under `opus-pack.extensions.disabled` (sorted).
 - **Footer slot:** `off:N` appears when anything is disabled.
 - **Critical extensions** (e.g. `safe-deny`): disabling requires `--force` on the CLI or explicit confirmation in the modal.
+- **Drift warning.** A `⚠ N unregistered: …` row in the modal and `; ⚠ unregistered: …` suffix on `/opus-pack status` flag `extensions/*.ts` files that exist on disk but aren't listed in `OPUS_EXTENSIONS`. Keeps new extensions from silently shipping uncategorized.
 
 ---
 
