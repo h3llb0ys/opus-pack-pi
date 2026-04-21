@@ -282,13 +282,39 @@ export default function (pi: ExtensionAPI) {
 	// behaviour against mid-session config edits.
 	let planCfgSnapshot: PlanModeConfig | null = null;
 	let planMcpTools: string[] = [];
+	let planMcpToolSet: Set<string> = new Set();
+
+	// Detect MCP tools via (a) pi-mcp-adapter `sourceInfo` — works regardless
+	// of toolPrefix setting ("server"/"short"/"none"); (b) unified proxy tool
+	// literally named "mcp"; (c) user-configurable regex for third-party MCP
+	// providers or custom naming. Base tools (read/bash/...) are always
+	// excluded so a misconfigured MCP server cannot shadow a builtin and
+	// trigger the gate for native tool calls.
+	//
+	// NOTE on unified proxy mode: when `toolPrefix: "none"` *and* unified
+	// proxy is enabled, a single `Allow (session)` for the `mcp` key grants
+	// broad access to every MCP server for the plan-session lifetime. Users
+	// who want per-server granularity should run pi-mcp-adapter with direct
+	// tools (`toolPrefix: "server"` or `"short"`) instead.
+	const MCP_ADAPTER_PKG = "pi-mcp-adapter";
+	const matchesAdapterSource = (src: string | undefined, path: string | undefined): boolean => {
+		if (src === MCP_ADAPTER_PKG) return true;
+		if (path && /[\\/]pi-mcp-adapter([\\/]|$)/.test(path)) return true;
+		return false;
+	};
+	const isMcpToolInfo = (t: { name: string; sourceInfo?: { source?: string; path?: string } }, re: RegExp): boolean => {
+		if (PLAN_MODE_BASE_TOOLS.includes(t.name)) return false;
+		if (t.name === "mcp") return true;
+		if (matchesAdapterSource(t.sourceInfo?.source, t.sourceInfo?.path)) return true;
+		return re.test(t.name);
+	};
 
 	const collectMcpTools = (cfg: PlanModeConfig): string[] => {
 		const re = compileMcpPattern(cfg.mcpPattern);
 		const mcp: string[] = [];
 		try {
 			for (const t of pi.getAllTools()) {
-				if (re.test(t.name)) mcp.push(t.name);
+				if (isMcpToolInfo(t, re)) mcp.push(t.name);
 			}
 		} catch { /* best-effort: older pi versions or registry not ready */ }
 		return mcp;
@@ -298,12 +324,14 @@ export default function (pi: ExtensionAPI) {
 		const cfg = loadOpusPackSection("planMode", DEFAULT_PLAN_CFG);
 		planCfgSnapshot = cfg;
 		planMcpTools = collectMcpTools(cfg);
+		planMcpToolSet = new Set(planMcpTools);
 		return cfg;
 	};
 
 	const clearPlanCfg = () => {
 		planCfgSnapshot = null;
 		planMcpTools = [];
+		planMcpToolSet = new Set();
 	};
 
 	const buildPlanModeTools = (): string[] => {
@@ -311,6 +339,7 @@ export default function (pi: ExtensionAPI) {
 		// Re-scan registry every call so tools registered between plan-entry
 		// and this call are picked up. Cheap: single getAllTools() iteration.
 		planMcpTools = collectMcpTools(cfg);
+		planMcpToolSet = new Set(planMcpTools);
 		return [...PLAN_MODE_BASE_TOOLS, ...planMcpTools];
 	};
 	// Path to the .pi/plans/<slug>.md file currently driving execution. Set
@@ -373,13 +402,18 @@ export default function (pi: ExtensionAPI) {
 		activePlanPath = null;
 		planApprovals.clear();
 		if (planModeEnabled) {
-			snapshotPlanCfg();
+			const cfg = snapshotPlanCfg();
 			const tools = buildPlanModeTools();
 			pi.setActiveTools(tools);
-			const MAX = 15;
-			const shown = tools.slice(0, MAX).join(", ");
-			const rest = tools.length > MAX ? `, +${tools.length - MAX} more` : "";
-			ctx.ui.notify(`Plan mode ON. Tools: ${shown}${rest}`, "info");
+			const mcpCount = planMcpTools.length;
+			const mcpNote = mcpCount > 0 ? `, ${mcpCount} MCP tools (gated per-call)` : ", no MCP tools detected";
+			ctx.ui.notify(`Plan mode ON. Base: ${PLAN_MODE_BASE_TOOLS.join(", ")}${mcpNote}.`, "info");
+			if (cfg.gateGranularity === "server" && mcpCount > 0 && !planMcpTools.some((n) => /^mcp__[^_]+__/.test(n))) {
+				ctx.ui.notify(
+					"planMode.gateGranularity=\"server\" but none of detected MCP tools use the mcp__<server>__<tool> naming — falling back to per-tool approvals.",
+					"warning",
+				);
+			}
 		} else {
 			clearPlanCfg();
 			pi.setActiveTools(NORMAL_MODE_TOOLS);
@@ -614,8 +648,7 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 		const cfg = planCfgSnapshot ?? snapshotPlanCfg();
-		const mcpRe = compileMcpPattern(cfg.mcpPattern);
-		if (!mcpRe.test(event.toolName)) return;
+		if (!planMcpToolSet.has(event.toolName)) return;
 
 		const key = gateKey(event.toolName, cfg.gateGranularity);
 		const cached = planApprovals.get(key);
