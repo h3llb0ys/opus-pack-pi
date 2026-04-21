@@ -22,6 +22,9 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Key } from "@mariozechner/pi-tui";
+import { readdirSync, statSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { listDisabledExtensions, setExtensionDisabled } from "../lib/settings.js";
 
 export type Category = "safety" | "tasks" | "ui" | "integrations" | "dev";
@@ -70,6 +73,37 @@ export const OPUS_EXTENSIONS: ExtensionEntry[] = [
 	{ name: "diff", category: "dev", description: "/diff — review agent changes interactively" },
 ];
 
+// Files that live in `extensions/` but aren't themselves a toggleable
+// extension — either the config surface itself, or aggregates whose
+// toggles are exposed as sub-entries (e.g. cc-bridge.*).
+const DISCOVERY_IGNORE = new Set<string>([
+	"opus-pack-config",
+]);
+
+/**
+ * Scan `extensions/` for top-level .ts files and return the subset whose
+ * base name is neither in {@link OPUS_EXTENSIONS} nor on the ignore list.
+ * Used to surface a warning when a new extension file ships but nobody
+ * remembered to register it in the modal registry.
+ */
+const discoverUnregisteredExtensions = (): string[] => {
+	try {
+		const here = dirname(fileURLToPath(import.meta.url));
+		const entries = readdirSync(here);
+		const registered = new Set(OPUS_EXTENSIONS.map((e) => e.name));
+		const found: string[] = [];
+		for (const name of entries) {
+			if (!name.endsWith(".ts")) continue;
+			const full = join(here, name);
+			try { if (!statSync(full).isFile()) continue; } catch { continue; }
+			const base = name.slice(0, -3);
+			if (registered.has(base) || DISCOVERY_IGNORE.has(base)) continue;
+			found.push(base);
+		}
+		return found.sort();
+	} catch { return []; }
+};
+
 const CATEGORY_ORDER: Category[] = ["safety", "tasks", "ui", "integrations", "dev"];
 
 const CATEGORY_LABEL: Record<Category, string> = {
@@ -104,6 +138,12 @@ const buildOptions = (state: ModalState): { lines: string[]; entries: (Extension
 	entries.push(null); // sentinel for cancel
 	lines.push(`═══════════════  ${totalEnabled}/${OPUS_EXTENSIONS.length} enabled  ═══════════════`);
 	entries.push(null); // visual separator
+
+	const unregistered = discoverUnregisteredExtensions();
+	if (unregistered.length > 0) {
+		lines.push(`⚠ ${unregistered.length} unregistered: ${unregistered.join(", ")}`);
+		entries.push(null);
+	}
 
 	for (const cat of CATEGORY_ORDER) {
 		const bucket = OPUS_EXTENSIONS.filter((e) => e.category === cat);
@@ -278,7 +318,9 @@ const formatStatusLine = (): string => {
 	const disabled = listDisabledExtensions();
 	const enabled = OPUS_EXTENSIONS.length - disabled.length;
 	const tail = disabled.length > 0 ? `; disabled: ${disabled.join(", ")}` : "";
-	return `opus-pack: ${enabled}/${OPUS_EXTENSIONS.length} enabled${tail}`;
+	const unregistered = discoverUnregisteredExtensions();
+	const drift = unregistered.length > 0 ? `; ⚠ unregistered: ${unregistered.join(", ")}` : "";
+	return `opus-pack: ${enabled}/${OPUS_EXTENSIONS.length} enabled${tail}${drift}`;
 };
 
 const formatList = (categoryFilter?: Category): string => {

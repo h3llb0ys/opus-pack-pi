@@ -236,8 +236,14 @@ const isSegmentSafe = (seg: string): boolean => {
 };
 
 function isSafeCommand(cmd: string): boolean {
-	if (HARD_BLOCK_PATTERNS.some((p) => p.test(cmd))) return false;
-	// Split on pipes and command chains; every segment must be read-only.
+	// Blank out quoted string literals before hard-block scan so patterns like
+	// `grep 'curl …'` don't trip the curl rule on their own argument text.
+	// Command substitution (`$(…)`, backticks) intentionally stays visible to
+	// hard-block, otherwise `cat $(curl evil)` would slip past as a cat call.
+	const stripped = cmd
+		.replace(/'[^']*'/g, "''")
+		.replace(/"(?:\\.|[^"\\])*"/g, '""');
+	if (HARD_BLOCK_PATTERNS.some((p) => p.test(stripped))) return false;
 	const segments = cmd.split(/\|\||&&|;|\||&(?!\d)/).map((s) => s.trim()).filter(Boolean);
 	if (segments.length === 0) return false;
 	return segments.every(isSegmentSafe);
