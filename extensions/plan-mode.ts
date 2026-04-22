@@ -22,6 +22,18 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import { join } from "node:path";
 import { parseFrontmatter } from "@mariozechner/pi-coding-agent";
 import { isExtensionDisabled, loadOpusPackSection } from "../lib/settings.js";
+import { isRecheckInProgress, willRecheckFire, type SelfRecheckConfig } from "../lib/self-recheck-state.js";
+
+const DEFAULT_RECHECK_CFG: SelfRecheckConfig = {
+	enabled: false,
+	models: [],
+	prompt: "",
+	defectsPrompt: "",
+	correctedPrompt: "",
+	minAssistantChars: 200,
+	maxPerSession: 0,
+	twoStage: true,
+};
 
 interface PlanModeConfig {
 	autoSave: boolean;
@@ -785,10 +797,36 @@ Create a numbered plan under a "Plan:" header. Do NOT make changes.`,
 		}
 		if (!planModeEnabled || !ctx.hasUI) return;
 
-		const lastAssistant = [...event.messages].reverse().find(isAssistantMessage);
+		// Defer the plan dialog while self-recheck is running (or is about
+		// to fire on this agent_end). Weak models produce much better plans
+		// after the recheck; showing the dialog on the pre-recheck draft
+		// would force the user to decide before the corrected version
+		// arrives. The dialog is re-driven via `opus-pack:recheck:completed`
+		// below once recheck finishes.
+		const recheckCfg = loadOpusPackSection("selfRecheck", DEFAULT_RECHECK_CFG);
+		if (isRecheckInProgress() || willRecheckFire(event, ctx, recheckCfg)) {
+			return;
+		}
+
+		await promptPlanChoice(event, ctx);
+	});
+
+	// Helper extracted so the plan dialog can be driven both from
+	// `agent_end` (normal path, no recheck) and from the
+	// `opus-pack:recheck:completed` event (post-recheck path).
+	//
+	// After a recheck, the last assistant message may be the defects list or
+	// a "no defects found" reply instead of the actual plan. Walk backward
+	// through recent assistant messages and pick the first one that parses
+	// as a plan (>=1 step).
+	const promptPlanChoice = async (event: { messages: any[] }, ctx: ExtensionContext) => {
+		if (!planModeEnabled || !ctx.hasUI) return;
+
+		const assistants = event.messages.filter(isAssistantMessage);
 		let steps: string[] = [];
-		if (lastAssistant) {
-			steps = extractPlanSteps(getTextContent(lastAssistant));
+		for (let i = assistants.length - 1; i >= Math.max(0, assistants.length - 4); i--) {
+			const parsed = extractPlanSteps(getTextContent(assistants[i] as AssistantMessage));
+			if (parsed.length > 0) { steps = parsed; break; }
 		}
 
 		if (steps.length > 0) {
@@ -826,6 +864,14 @@ Create a numbered plan under a "Plan:" header. Do NOT make changes.`,
 			const refinement = await ctx.ui.editor("Refine:", "");
 			if (refinement?.trim()) pi.sendUserMessage(refinement.trim());
 		}
+	};
+
+	pi.events.on("opus-pack:recheck:completed", async (payload: { event: { messages: any[] }; ctx: ExtensionContext; outcome: string }) => {
+		if (!planModeEnabled || executionMode) return;
+		// Skip "failed" — the last assistant is likely the defects list, not
+		// the plan, and the user already saw an error toast from self-recheck.
+		if (payload.outcome === "failed") return;
+		await promptPlanChoice(payload.event, payload.ctx);
 	});
 
 	pi.on("session_start", async (_event, ctx) => {

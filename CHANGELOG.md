@@ -6,6 +6,13 @@ Reverse-chronological. Versions track git tags. Format inspired by [Keep a Chang
 
 ### Added
 
+- **Self-recheck two-stage flow.** `selfRecheck` now splits its critique into two follow-up turns by default: stage 1 lists concrete defects only (or replies `no defects found`); stage 2 produces the corrected answer. Each stage is a separate assistant message so defects and the fix are visually distinct in the transcript. `selfRecheck.twoStage = false` (or a non-empty `selfRecheck.prompt`) falls back to the legacy single-message behavior. New optional config: `defectsPrompt`, `correctedPrompt`.
+- **Plan-mode defers the "what next?" dialog while self-recheck is running.** Previously the Execute/Refine/Stay modal appeared on the pre-recheck plan draft, so the user had to decide before the corrected version arrived. Plan-mode now checks shared recheck state (`lib/self-recheck-state.ts`) and skips the dialog on the triggering `agent_end`; the dialog appears after the corrected turn ends.
+
+### Changed
+
+- Self-recheck internals moved to `lib/self-recheck-state.ts` (shared state + pure `willRecheckFire` predicate + `isRecheckInProgress`) so other extensions can coordinate without reaching into a closure.
+
 - **Provider-neutrality.** The pack no longer assumes Anthropic.
   - `opus-pack.subagent.modelAlias` (`fast` / `balanced` / `slow`) swaps providers with a single settings change instead of editing every agent frontmatter.
   - `model-router.levels` ships empty by default. `_levels_example_{anthropic,openai,ollama}` stubs live alongside for copy-paste.

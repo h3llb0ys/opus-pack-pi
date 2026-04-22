@@ -8,9 +8,19 @@
  * using `pi.sendUserMessage(prompt, { deliverAs: "followUp" })` after
  * `agent_end`.
  *
- * Recursion guard: a flag is set before injecting and cleared on the
- * next agent_end so the recheck turn itself never triggers another
- * recheck.
+ * Two-stage flow (default):
+ *   stage "defects"   — inject DEFECTS_PROMPT, model produces a defect list
+ *                       only (or "no defects found")
+ *   stage "corrected" — inject CORRECTED_PROMPT, model produces the revised
+ *                       answer only; skipped if stage 1 said "no defects"
+ *
+ * This gives two separate assistant messages in the transcript (defects
+ * first, then the corrected answer), instead of both being crammed into one
+ * turn. Set `opus-pack.selfRecheck.twoStage = false` (or provide a custom
+ * `prompt`) to fall back to the legacy single-stage behavior.
+ *
+ * Recursion guard: stage is tracked in shared state and cleared on agent_end
+ * of the corrected turn so the recheck itself never triggers another.
  *
  * Slash commands: /recheck <on|off|status|now|skip>.
  *   - now  : force one recheck on the next idle turn regardless of model
@@ -18,22 +28,49 @@
  *
  * Independent of model-router by design — that one chooses *which* model
  * runs, this one decides whether to ask the chosen model to second-guess
- * itself. See README in extensions/.
+ * itself.
  */
 
-import { minimatch } from "minimatch";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { isExtensionDisabled, loadOpusPackSection } from "../lib/settings.js";
+import {
+	recheckState,
+	resetRecheckState,
+	matchesAny,
+	lastAssistantText,
+	lastAssistantTextLength,
+	type SelfRecheckConfig,
+} from "../lib/self-recheck-state.js";
 
-interface SelfRecheckConfig {
-	enabled: boolean;
-	models: string[];           // glob list, e.g. ["glm-*", "*qwen*", "deepseek*"]
-	prompt: string;             // the critique prompt sent as follow-up
-	minAssistantChars: number;  // skip recheck if last assistant text shorter than this
-	maxPerSession: number;      // 0 = unlimited
-}
+// Exact-match on the whole trimmed reply — avoids false positives when a
+// model writes "no defects found in section 2" as part of a longer answer.
+const isNoDefectsReply = (text: string): boolean => {
+	const t = text.trim().toLowerCase();
+	return t === "no defects found" || t === "no defects found.";
+};
 
-const DEFAULT_PROMPT = [
+const DEFECTS_PROMPT = [
+	"Critique your own previous answer. Be strict, no hedging.",
+	"",
+	"1. Correctness: which claims are unverified? Where did you guess instead of checking? Mentally walk edge cases (empty input, errors, concurrency, boundaries).",
+	"2. Completeness: what part of the original request did you miss? Which scenario is not covered?",
+	"3. Depth: where is the answer shallow? Where did you say WHAT instead of WHY?",
+	"4. Code (if any was produced): does it compile? Types correct? Do the imports actually exist? Any race / leak / off-by-one? Is a regression test needed?",
+	"",
+	"Output ONLY a numbered list of concrete defects — 'line Y does Z, should be W', not vague 'could be improved'. Do NOT rewrite the answer in this turn; the revised version comes in a separate follow-up.",
+	"",
+	"If you find no real defects, reply with exactly: no defects found",
+].join("\n");
+
+const CORRECTED_PROMPT = [
+	"Now produce the corrected, improved version of your previous answer, incorporating the defects you just listed.",
+	"",
+	"Output ONLY the revised answer — no preamble, no restating of defects, no meta-commentary. Treat this as the final answer the user will actually use.",
+].join("\n");
+
+// Kept for back-compat: if a user has a custom `prompt` set in settings, we
+// honor it via the legacy single-stage path.
+const LEGACY_DEFAULT_PROMPT = [
 	"Critique your own previous answer. Be strict, no hedging.",
 	"",
 	"1. Correctness: which claims are unverified? Where did you guess instead of checking? Mentally walk edge cases (empty input, errors, concurrency, boundaries).",
@@ -51,121 +88,141 @@ const DEFAULT_PROMPT = [
 const DEFAULT_CONFIG: SelfRecheckConfig = {
 	enabled: false,
 	models: [],
-	prompt: DEFAULT_PROMPT,
+	prompt: "",                           // empty => use two-stage
+	defectsPrompt: DEFECTS_PROMPT,
+	correctedPrompt: CORRECTED_PROMPT,
 	minAssistantChars: 200,
 	maxPerSession: 0,
+	twoStage: true,
 };
 
 const loadConfig = (): SelfRecheckConfig => loadOpusPackSection("selfRecheck", DEFAULT_CONFIG);
 
-const matchesAny = (modelId: string, globs: string[]): boolean =>
-	globs.some((g) => {
-		try { return minimatch(modelId, g, { nocase: true }); } catch { return false; }
-	});
-
-const lastAssistantTextLength = (messages: any[]): number => {
-	for (let i = messages.length - 1; i >= 0; i--) {
-		const m = messages[i];
-		if (!m || m.role !== "assistant") continue;
-		const content = m.content;
-		if (typeof content === "string") return content.length;
-		if (Array.isArray(content)) {
-			let n = 0;
-			for (const part of content) {
-				if (part && part.type === "text" && typeof part.text === "string") n += part.text.length;
-			}
-			return n;
-		}
-		return 0;
-	}
-	return 0;
+// Use two-stage when enabled AND the user didn't override with a custom single-stage prompt.
+const useTwoStage = (cfg: SelfRecheckConfig): boolean => {
+	if (!cfg.twoStage) return false;
+	const custom = (cfg.prompt ?? "").trim();
+	if (!custom) return true;
+	// Back-compat: treat the old baked-in default as "no override".
+	return custom === LEGACY_DEFAULT_PROMPT.trim();
 };
 
 export default function (pi: ExtensionAPI) {
 	if (isExtensionDisabled("self-recheck")) return;
-
-	let pausedByUser = false;
-	let inRecheckTurn = false;     // set when we just injected a follow-up; cleared on next agent_end
-	let forceNext = false;         // /recheck now
-	let skipNext = false;          // /recheck skip
-	let countThisSession = 0;
-	let lastDecision = "";
 
 	const setStatus = (ctx: ExtensionContext, text: string | undefined) => {
 		ctx.ui.setStatus("07-recheck", text);
 	};
 
 	pi.on("session_start", async (_event, _ctx) => {
-		// Per-session counters reset; transient flags do not survive a
-		// new session anyway, but reset them defensively.
-		countThisSession = 0;
-		inRecheckTurn = false;
-		forceNext = false;
-		skipNext = false;
-		lastDecision = "";
+		resetRecheckState();
 	});
 
 	pi.on("agent_end", async (event, ctx) => {
 		const cfg = loadConfig();
-		if (!cfg.enabled && !forceNext) {
+		if (!cfg.enabled && !recheckState.forceNext) {
 			setStatus(ctx, undefined);
 			return;
 		}
 
-		// Clear the flag if the just-finished turn WAS the recheck turn we
-		// injected. Don't fire again — that would be infinite recursion.
-		if (inRecheckTurn) {
-			inRecheckTurn = false;
-			lastDecision = "recheck turn finished";
+		// --- Two-stage continuation ---------------------------------------
+		if (recheckState.stage === "defects") {
+			const lastText = lastAssistantText(event.messages ?? []);
+			if (isNoDefectsReply(lastText)) {
+				recheckState.stage = "none";
+				recheckState.inRecheckTurn = false;
+				recheckState.lastDecision = "no defects found (stage 1)";
+				setStatus(ctx, ctx.ui.theme.fg("muted", "✓ no defects"));
+				pi.events.emit("opus-pack:recheck:completed", { event, ctx, outcome: "no-defects" });
+				return;
+			}
+			// Proceed to corrected stage. Keep inRecheckTurn true.
+			recheckState.stage = "corrected";
+			recheckState.lastDecision = "defects listed, requesting corrected version";
+			setStatus(ctx, ctx.ui.theme.fg("accent", "↻ corrected…"));
+			ctx.ui.notify("↻ self-recheck: asking for corrected version", "info");
+			try {
+				pi.sendUserMessage(cfg.correctedPrompt, { deliverAs: "followUp" });
+			} catch (e) {
+				recheckState.inRecheckTurn = false;
+				recheckState.stage = "none";
+				ctx.ui.notify(`self-recheck: sendUserMessage failed — ${(e as Error).message}`, "error");
+				pi.events.emit("opus-pack:recheck:completed", { event, ctx, outcome: "failed" });
+			}
+			return;
+		}
+
+		if (recheckState.stage === "corrected") {
+			recheckState.stage = "none";
+			recheckState.inRecheckTurn = false;
+			recheckState.lastDecision = "corrected version delivered";
 			setStatus(ctx, ctx.ui.theme.fg("muted", "✓ rechecked"));
+			pi.events.emit("opus-pack:recheck:completed", { event, ctx, outcome: "corrected" });
 			return;
 		}
 
-		if (pausedByUser) {
-			lastDecision = "paused";
+		// Legacy single-stage continuation.
+		if (recheckState.inRecheckTurn) {
+			recheckState.inRecheckTurn = false;
+			recheckState.lastDecision = "recheck turn finished";
+			setStatus(ctx, ctx.ui.theme.fg("muted", "✓ rechecked"));
+			pi.events.emit("opus-pack:recheck:completed", { event, ctx, outcome: "legacy" });
 			return;
 		}
 
-		if (skipNext) {
-			skipNext = false;
-			lastDecision = "skipped (one-shot)";
+		// --- Initial firing decision --------------------------------------
+		if (recheckState.pausedByUser) {
+			recheckState.lastDecision = "paused";
+			return;
+		}
+
+		if (recheckState.skipNext) {
+			recheckState.skipNext = false;
+			recheckState.lastDecision = "skipped (one-shot)";
 			ctx.ui.notify("self-recheck: skipped this turn", "info");
 			return;
 		}
 
-		// Cap blocks auto-fires only — `/recheck now` is an explicit user
-		// request and should always go through.
-		if (!forceNext && cfg.maxPerSession > 0 && countThisSession >= cfg.maxPerSession) {
-			lastDecision = `cap reached (${cfg.maxPerSession})`;
+		if (!recheckState.forceNext && cfg.maxPerSession > 0 && recheckState.countThisSession >= cfg.maxPerSession) {
+			recheckState.lastDecision = `cap reached (${cfg.maxPerSession})`;
 			return;
 		}
 
 		const modelId = ctx.model?.id ?? "";
-		const matched = forceNext || (modelId !== "" && matchesAny(modelId, cfg.models));
+		const matched = recheckState.forceNext || (modelId !== "" && matchesAny(modelId, cfg.models));
 		if (!matched) {
-			lastDecision = `no match (${modelId || "?"})`;
+			recheckState.lastDecision = `no match (${modelId || "?"})`;
 			return;
 		}
 
 		const textLen = lastAssistantTextLength(event.messages ?? []);
-		if (!forceNext && textLen < cfg.minAssistantChars) {
-			lastDecision = `too short (${textLen} < ${cfg.minAssistantChars})`;
+		if (!recheckState.forceNext && textLen < cfg.minAssistantChars) {
+			recheckState.lastDecision = `too short (${textLen} < ${cfg.minAssistantChars})`;
 			return;
 		}
 
-		// Fire the follow-up. Mark the flag BEFORE the call to win any race
-		// with synchronous handlers that might observe agent state.
-		inRecheckTurn = true;
-		const wasForced = forceNext;
-		forceNext = false;
-		countThisSession++;
-		lastDecision = `fired (${modelId}${wasForced ? ", forced" : ""}, #${countThisSession})`;
-		setStatus(ctx, ctx.ui.theme.fg("accent", `↻ recheck`));
-		ctx.ui.notify(`↻ self-recheck: asking ${modelId || "model"} to review its answer`, "info");
+		// Fire. Mark state BEFORE the call so any synchronous observer sees it.
+		recheckState.inRecheckTurn = true;
+		const wasForced = recheckState.forceNext;
+		recheckState.forceNext = false;
+		recheckState.countThisSession++;
+
+		const twoStage = useTwoStage(cfg);
+		const firstPrompt = twoStage ? cfg.defectsPrompt : cfg.prompt;
+		recheckState.stage = twoStage ? "defects" : "none";
+
+		recheckState.lastDecision = `fired (${modelId}${wasForced ? ", forced" : ""}, ${twoStage ? "2-stage" : "1-stage"}, #${recheckState.countThisSession})`;
+		setStatus(ctx, ctx.ui.theme.fg("accent", twoStage ? "↻ defects…" : "↻ recheck"));
+		ctx.ui.notify(
+			`↻ self-recheck: asking ${modelId || "model"} to ${twoStage ? "list defects" : "review its answer"}`,
+			"info",
+		);
 		try {
-			pi.sendUserMessage(cfg.prompt, { deliverAs: "followUp" });
+			pi.sendUserMessage(firstPrompt, { deliverAs: "followUp" });
 		} catch (e) {
-			inRecheckTurn = false;
+			recheckState.inRecheckTurn = false;
+			recheckState.stage = "none";
+			recheckState.countThisSession = Math.max(0, recheckState.countThisSession - 1);
 			ctx.ui.notify(`self-recheck: sendUserMessage failed — ${(e as Error).message}`, "error");
 		}
 	});
@@ -178,37 +235,41 @@ export default function (pi: ExtensionAPI) {
 			if (!arg || arg === "status") {
 				const modelId = ctx.model?.id ?? "(no model)";
 				const matchNow = modelId !== "(no model)" && matchesAny(modelId, cfg.models);
+				const mode = useTwoStage(cfg) ? "two-stage (defects + corrected)" : "single-stage";
 				ctx.ui.notify([
 					"═ self-recheck status ═",
 					`enabled:        ${cfg.enabled}`,
-					`paused:         ${pausedByUser}`,
+					`mode:           ${mode}`,
+					`paused:         ${recheckState.pausedByUser}`,
+					`current stage:  ${recheckState.stage}`,
 					`current model:  ${modelId}`,
 					`would fire:     ${matchNow ? "yes" : "no"}  (globs: ${cfg.models.join(", ") || "(none)"})`,
 					`min chars:      ${cfg.minAssistantChars}`,
-					`cap/session:    ${cfg.maxPerSession || "∞"}   used: ${countThisSession}`,
-					`pending flags:  ${forceNext ? "force-next " : ""}${skipNext ? "skip-next " : ""}${(forceNext || skipNext) ? "" : "(none)"}`,
-					`last decision:  ${lastDecision || "(none yet)"}`,
+					`cap/session:    ${cfg.maxPerSession || "∞"}   used: ${recheckState.countThisSession}`,
+					`pending flags:  ${recheckState.forceNext ? "force-next " : ""}${recheckState.skipNext ? "skip-next " : ""}${(recheckState.forceNext || recheckState.skipNext) ? "" : "(none)"}`,
+					`last decision:  ${recheckState.lastDecision || "(none yet)"}`,
 				].join("\n"), "info");
 				return;
 			}
-			if (arg === "on") { pausedByUser = false; ctx.ui.notify("self-recheck: resumed", "info"); return; }
+			if (arg === "on") { recheckState.pausedByUser = false; ctx.ui.notify("self-recheck: resumed", "info"); return; }
 			if (arg === "off" || arg === "pause") {
-				pausedByUser = true;
+				recheckState.pausedByUser = true;
 				setStatus(ctx, ctx.ui.theme.fg("warning", "recheck off"));
 				ctx.ui.notify("self-recheck: paused for this session", "info");
 				return;
 			}
 			if (arg === "now") {
-				forceNext = true;
+				recheckState.forceNext = true;
 				ctx.ui.notify("self-recheck: will fire on next turn (forced, ignores model match)", "info");
 				return;
 			}
 			if (arg === "skip") {
-				skipNext = true;
+				recheckState.skipNext = true;
 				ctx.ui.notify("self-recheck: next turn will be skipped", "info");
 				return;
 			}
 			ctx.ui.notify(`unknown arg "${arg}". Use: on | off | status | now | skip`, "warning");
 		},
 	});
+
 }
