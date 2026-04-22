@@ -6,7 +6,7 @@ Reverse-chronological. Versions track git tags. Format inspired by [Keep a Chang
 
 ### Added
 
-- **Self-recheck two-stage flow.** `selfRecheck` now splits its critique into two follow-up turns by default: stage 1 lists concrete defects only (or replies `no defects found`); stage 2 produces the corrected answer. Each stage is a separate assistant message so defects and the fix are visually distinct in the transcript. `selfRecheck.twoStage = false` (or a non-empty `selfRecheck.prompt`) falls back to the legacy single-message behavior. New optional config: `defectsPrompt`, `correctedPrompt`.
+- **Self-recheck two-stage flow.** `selfRecheck` now splits its critique into two follow-up turns by default: stage 1 asks for at most 7 real defects, one line each (`<where>: <wrong> → <should be>`); stage 2 emits a *minimal patch* — one bullet per defect, no full rewrite, no restated sections. Each stage is a separate assistant message so defects and the fix are visually distinct in the transcript. This replaces the previous behavior where the corrected turn re-produced the full answer (often longer than the original). `selfRecheck.twoStage = false` (or a non-empty `selfRecheck.prompt`) falls back to the legacy single-message behavior. New optional config: `defectsPrompt`, `correctedPrompt`.
 - **Plan-mode defers the "what next?" dialog while self-recheck is running.** Previously the Execute/Refine/Stay modal appeared on the pre-recheck plan draft, so the user had to decide before the corrected version arrived. Plan-mode now checks shared recheck state (`lib/self-recheck-state.ts`) and skips the dialog on the triggering `agent_end`; the dialog appears after the corrected turn ends.
 
 ### Changed

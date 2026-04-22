@@ -50,22 +50,23 @@ const isNoDefectsReply = (text: string): boolean => {
 };
 
 const DEFECTS_PROMPT = [
-	"Critique your own previous answer. Be strict, no hedging.",
+	"Audit your previous answer for real defects only. Be strict, skip stylistic nits.",
 	"",
-	"1. Correctness: which claims are unverified? Where did you guess instead of checking? Mentally walk edge cases (empty input, errors, concurrency, boundaries).",
-	"2. Completeness: what part of the original request did you miss? Which scenario is not covered?",
-	"3. Depth: where is the answer shallow? Where did you say WHAT instead of WHY?",
-	"4. Code (if any was produced): does it compile? Types correct? Do the imports actually exist? Any race / leak / off-by-one? Is a regression test needed?",
+	"Check: unverified claims, missed parts of the request, hand-wavy depth, broken code (compile / types / imports / races / off-by-one).",
 	"",
-	"Output ONLY a numbered list of concrete defects — 'line Y does Z, should be W', not vague 'could be improved'. Do NOT rewrite the answer in this turn; the revised version comes in a separate follow-up.",
+	"Output: at most 7 defects, one line each, in the form `<where>: <wrong> → <should be>`. No preamble, no prose, no grouping headers. Most important first. Stop when you run out of real defects — don't pad.",
 	"",
-	"If you find no real defects, reply with exactly: no defects found",
+	"If nothing real, reply with exactly: no defects found",
 ].join("\n");
 
 const CORRECTED_PROMPT = [
-	"Now produce the corrected, improved version of your previous answer, incorporating the defects you just listed.",
+	"Output a MINIMAL PATCH applying the defects you just listed. Not a rewritten answer.",
 	"",
-	"Output ONLY the revised answer — no preamble, no restating of defects, no meta-commentary. Treat this as the final answer the user will actually use.",
+	"Rules:",
+	"- One bullet per defect, in order. Form: `<where>: <old> → <new>`.",
+	"- If a fix needs more than one line, give ONLY the replacement block for that spot, labelled with its heading/anchor, nothing else.",
+	"- Do NOT restate unchanged sections. Do NOT repeat the original answer. Do NOT add preamble, summary, or 'here is the corrected version' framing.",
+	"- Keep the patch as short as the defects require. If one defect → one bullet, done.",
 ].join("\n");
 
 // Kept for back-compat: if a user has a custom `prompt` set in settings, we

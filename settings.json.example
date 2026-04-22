@@ -105,7 +105,7 @@
       "minAssistantChars": 200,
       "maxPerSession": 0,
       "twoStage": true,
-      "_prompt_comment": "Leave `prompt` empty for the two-stage flow. Override `defectsPrompt` / `correctedPrompt` (strings) to tune each stage, or set a non-empty `prompt` to fall back to the legacy single-stage behavior (defects + corrected in one message)."
+      "_prompt_comment": "Leave `prompt` empty for the two-stage flow. Stage 1 asks for at most 7 real defects (one-line `<where>: <wrong> → <should be>`); stage 2 emits a minimal patch, not a rewritten answer. Override `defectsPrompt` / `correctedPrompt` (strings) to tune each stage, or set a non-empty `prompt` to fall back to the legacy single-stage behavior (defects + full corrected answer in one message)."
     },
     "_compactHints_comment": "Fill compactHints with project-specific topics to preserve during /compact.",
     "compactHints": [],

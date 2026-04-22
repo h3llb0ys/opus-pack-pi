@@ -115,7 +115,7 @@
 ### Self-recheck (weak-model second pass)
 
 - When `selfRecheck.enabled` and the active model id matches a glob in `selfRecheck.models` (e.g. `glm-*`), an automatic critique fires after `agent_end`.
-- **Two-stage by default:** stage 1 asks the model to list concrete defects only (or reply `no defects found`); stage 2 asks for the corrected answer. Each stage is a separate assistant message, so the transcript keeps defects and the fix visually distinct. If stage 1 returns `no defects found`, stage 2 is skipped.
+- **Two-stage by default:** stage 1 asks the model for at most 7 real defects (one-line `<where>: <wrong> → <should be>`); stage 2 emits a *minimal patch* — one bullet per defect, no full rewrite, no restated sections. Each stage is a separate assistant message. If stage 1 returns `no defects found`, stage 2 is skipped.
 - Recursion-safe: the recheck itself never triggers another recheck.
 - In plan mode, the "what next?" dialog is deferred until recheck completes — weak-model plans benefit from the rewrite before the user decides Execute/Refine/Stay.
 - `/recheck status | on | off | now | skip` — `now` forces one pass on the next turn regardless of model match or cap; `skip` suppresses the next auto-fire; `status` shows the current stage.
