@@ -79,7 +79,7 @@ Full reference: [**extensions/README.md**](./extensions/README.md). Summary, gro
 | **Tasks & routing** | `plan-mode`, `todo`, `model-router` |
 | **UI & reporting** | `status`, `bash-progress`, `mcp-compress`, `desktop-notify`, `session-summary`, `list-resources` |
 | **Integrations** | `cc-bridge/` (skills, commands, claude-md, hooks), `smart-compact`, `log-tail`, `pi-search`, `deferred-tools` |
-| **Dev loop** | `diff` |
+| **Dev loop** | `diff`, `self-recheck` |
 | **Meta** | `opus-pack-config` |
 
 Highlights:
@@ -89,6 +89,7 @@ Highlights:
 - **`plan-mode`** — `/plan` + `Ctrl+Alt+P`, cross-session `/plan-resume`, progress tracking delegated to the `todo` tool, `--plan` startup flag. Per-call MCP approval gate (`Allow / Deny` × `session / once`) with an in-memory cache scoped to the plan session; configurable via `opus-pack.planMode.{mcpPattern,gateGranularity,nonInteractivePolicy}`.
 - **`model-router`** — heuristic model + thinking-level switcher per prompt with rate-limit downgrade on 429.
 - **`opus-pack-config`** — `/opus-pack` modal and subcommands to toggle any extension at runtime.
+- **`self-recheck`** — auto second-pass for weak models (GLM, Qwen, DeepSeek by default via model-glob match). Two-stage follow-up: stage 1 lists up to 7 concrete defects, stage 2 emits a minimal patch (not a full rewrite). Opt-in adaptive gate (`adaptiveTrigger`) drops rechecks on acks, short factual Qs, chatty turns without code/tool use, and bursts that violate a cooldown. Optional LLM classifier gate (`classifier`) asks the active model YES/NO before firing. In plan mode the "Execute / Refine / Stay" dialog is deferred until recheck finishes so the user decides on the post-recheck plan. `/recheck status|on|off|now|skip`.
 
 ### Community packages installed by `install.sh`
 

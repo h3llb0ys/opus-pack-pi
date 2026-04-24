@@ -183,6 +183,24 @@ Review agent changes interactively.
 
 - **Slash:** `/diff` — shows `git diff HEAD --stat` plus a file picker with the full per-file diff.
 
+### `self-recheck.ts`
+
+Automatic second pass for weak models. Fires after `agent_end` when the active model id matches one of `selfRecheck.models` (glob, default `glm-*`, `*qwen*`, `deepseek*`) and the assistant text is at least `minAssistantChars` long.
+
+**Two-stage flow (default):**
+- Stage 1 injects `defectsPrompt` — model outputs up to 7 concrete defects, one line each in the form `<where>: <wrong> → <should be>`, or the exact string `no defects found`.
+- Stage 2 injects `correctedPrompt` — model emits a *minimal patch*, one bullet per defect, no full rewrite and no restated sections. Skipped if stage 1 said `no defects found`.
+- Each stage is a separate assistant message so defects and the fix stay visually distinct. A `opus-pack:recheck:completed` event is emitted at the end of each terminal stage (`no-defects` / `corrected` / `legacy` / `failed`).
+- Legacy single-stage flow: set `twoStage: false`, or provide a non-empty `prompt`.
+
+**Adaptive trigger** (`selfRecheck.adaptiveTrigger.enabled`, off by default): cheap heuristic gates that run before firing — skips on ack-only user messages (`skipIfAckOnly` regex, default covers RU+EN), short factual Qs (`skipIfFactualAsk`), turns without tool use or code (`requireToolUseOrCode`), low-structure assistant output (`requireStructureScore` — code blocks / tables / long lists / file paths / inline code spans each +1 point), and bursts that violate `cooldownUserTurns` between auto-fires.
+
+**Classifier** (`selfRecheck.classifier`, off by default): optional YES/NO gate that calls the currently active model via `completeSimple` with a short classifier prompt. Cached per session by sha256(answer). Fails open — timeout, unparsed reply, or exception all return fire=true so a wedged classifier cannot silently suppress recheck. Adds one extra API call per otherwise-fireable turn.
+
+**Plan-mode coordination:** while a recheck is running or about to fire, plan-mode defers its "Execute / Refine / Stay" dialog. The dialog is re-driven via the `opus-pack:recheck:completed` event, so the user decides on the post-recheck plan.
+
+- **Slash:** `/recheck status|on|off|now|skip`. `now` bypasses every gate (model match, cap, adaptive, classifier); `skip` suppresses the next auto-fire one-shot; `status` prints mode, stage, adaptive/classifier state, cap usage, cooldown counter, and last decision.
+
 ---
 
 ## Meta
