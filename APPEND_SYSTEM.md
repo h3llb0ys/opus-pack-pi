@@ -114,15 +114,11 @@
 
 ### Self-recheck (weak-model second pass)
 
-- When `selfRecheck.enabled` and the active model id matches a glob in `selfRecheck.models` (e.g. `glm-*`), an automatic critique fires after `agent_end`.
-- **Side-channel rendering.** Recheck output is emitted via `ctx.ui.notify(..., "info")` — the same muted style as the Session Summary panel. It does NOT land in the session message history, so it doesn't bloat the context window, can't be replayed through compaction, and can't trigger its own recursion.
-- **Two-stage by default:** stage 1 asks the model for at most 7 real defects (one-line `<where>: <wrong> → <should be>`); stage 2 emits a *minimal patch* — one bullet per defect, no full rewrite, no restated sections. Each stage renders as its own muted block. If stage 1 returns `no defects found`, stage 2 is skipped.
-- **Fire-and-forget.** The recheck runs asynchronously after `agent_end` returns; the main agent loop is never blocked on recheck network latency.
-- In plan mode, the "what next?" dialog is deferred until recheck completes — weak-model plans benefit from seeing the defects + patch beside the draft before the user decides Execute/Refine/Stay.
-- `/recheck status | on | off | now | skip` — `now` forces one pass on the next turn regardless of model match, cap, adaptive gate, or classifier; `skip` suppresses the next auto-fire; `status` shows the current stage, adaptive/classifier flags, and turns-since-last-fire.
-- **Adaptive trigger** (`selfRecheck.adaptiveTrigger.enabled`): when on, recheck skips turns that are unlikely to benefit — short acks, simple factual Qs, low-structure answers, turns without tool use or code, and bursts that violate a cooldown of N user-turns. Configurable via regex (`skipIfAckOnly`, `skipIfFactualAsk`), structure score threshold (`requireStructureScore` — signals: fenced code, headings, tables, numbered/bulleted lists, em-dash definition lists, file paths, ≥3 inline code spans), tool-use requirement (`requireToolUseOrCode`), `cooldownUserTurns`, and `longAnswerBypass` (answers ≥ N chars bypass the structure / tool gates so 2-screen prose still gets a recheck).
-- **Classifier** (`selfRecheck.classifier`): optional final YES/NO gate that asks the active model whether its own previous answer warrants a recheck. Cached by answer hash per session. Fails open — any timeout or unparsed reply still fires. One extra short API call per otherwise-fireable turn, so off by default.
-- Tune prompts via `selfRecheck.defectsPrompt` / `selfRecheck.correctedPrompt`. Set `selfRecheck.twoStage = false`, or provide a custom `selfRecheck.prompt`, to fall back to the legacy single-message flow.
+- When `selfRecheck.enabled` and the active model id matches a glob in `selfRecheck.models` (e.g. `glm-*`), a single user-message follow-up is auto-injected via `pi.sendUserMessage` after `agent_end`. The model's reply becomes a real assistant turn and lands in session history, so subsequent turns see the revised answer instead of the original draft.
+- The default prompt asks the model to (1) re-read the original prompt and identify constraints, (2) walk its previous answer item by item with KEEP / DROP / FIX, (3) add anything required-but-missing, (4) output the clean revised answer with no preamble or meta-commentary. Override via `selfRecheck.prompt`.
+- Recursion-safe: the recheck turn itself never triggers another recheck.
+- In plan mode, the "what next?" dialog is deferred until recheck completes — weak-model plans get reviewed before the user decides Execute/Refine/Stay.
+- `/recheck status | on | off | now | skip` — `now` forces one pass on the next turn regardless of model match or cap; `skip` suppresses the next auto-fire; `status` prints the current decision and counters.
 
 ### Notifications
 

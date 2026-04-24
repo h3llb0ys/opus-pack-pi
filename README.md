@@ -89,7 +89,7 @@ Highlights:
 - **`plan-mode`** — `/plan` + `Ctrl+Alt+P`, cross-session `/plan-resume`, progress tracking delegated to the `todo` tool, `--plan` startup flag. Per-call MCP approval gate (`Allow / Deny` × `session / once`) with an in-memory cache scoped to the plan session; configurable via `opus-pack.planMode.{mcpPattern,gateGranularity,nonInteractivePolicy}`.
 - **`model-router`** — heuristic model + thinking-level switcher per prompt with rate-limit downgrade on 429.
 - **`opus-pack-config`** — `/opus-pack` modal and subcommands to toggle any extension at runtime.
-- **`self-recheck`** — side-channel second pass for weak models (GLM/Qwen/DeepSeek by default). Two-stage critique (defects + minimal patch), muted notification-style rendering, doesn't enter session history. Opt-in adaptive gate and LLM classifier cut false fires. `/recheck status|on|off|now|skip`.
+- **`self-recheck`** — auto follow-up review for weak models (GLM/Qwen/DeepSeek by default). After `agent_end`, injects a single user-message asking the model to re-read the original prompt, walk its answer item-by-item, and rewrite it clean against every constraint. Reply lands in session history so the LLM stays aware of the revised answer. `/recheck status|on|off|now|skip`.
 
 ### Community packages installed by `install.sh`
 

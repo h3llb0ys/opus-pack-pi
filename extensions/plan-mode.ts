@@ -22,19 +22,14 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import { join } from "node:path";
 import { parseFrontmatter } from "@mariozechner/pi-coding-agent";
 import { isExtensionDisabled, loadOpusPackSection } from "../lib/settings.js";
-import { isRecheckInProgress, willRecheckFire, DEFAULT_ADAPTIVE, type SelfRecheckConfig } from "../lib/self-recheck-state.js";
+import { isRecheckInProgress, willRecheckFire, type SelfRecheckConfig } from "../lib/self-recheck-state.js";
 
 const DEFAULT_RECHECK_CFG: SelfRecheckConfig = {
 	enabled: false,
 	models: [],
 	prompt: "",
-	defectsPrompt: "",
-	correctedPrompt: "",
 	minAssistantChars: 200,
 	maxPerSession: 0,
-	twoStage: true,
-	classifier: false,
-	adaptiveTrigger: { ...DEFAULT_ADAPTIVE },
 };
 
 interface PlanModeConfig {

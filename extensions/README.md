@@ -185,23 +185,15 @@ Review agent changes interactively.
 
 ### `self-recheck.ts`
 
-Automatic second pass for weak models. Fires after `agent_end` when the active model id matches one of `selfRecheck.models` (glob, default `glm-*`, `*qwen*`, `deepseek*`) and the assistant text is at least `minAssistantChars` long.
+Automatic second pass for weak models. After `agent_end`, when the active model id matches one of `selfRecheck.models` (glob, default `glm-*`, `*qwen*`, `deepseek*`) and the assistant text is at least `minAssistantChars` long, the extension injects a single user-message follow-up via `pi.sendUserMessage(prompt, { deliverAs: "followUp" })`. The model's reply becomes a real assistant turn and lands in session history, so the LLM is aware of the revised answer on subsequent turns.
 
-**Side-channel rendering.** Recheck does NOT send a real assistant turn. It calls `completeSimple(ctx.model, …)` directly against a minimal scratch context (the last user/assistant exchange + the stage prompt) and renders the result via `ctx.ui.notify(text, "info")`, matching the muted style of the Session Summary panel. The output never enters session history, so it doesn't bloat the context window, can't be replayed through compaction, and can't recurse into itself. Runs fire-and-forget after `agent_end` returns.
+The default prompt asks the model to (1) re-read the original prompt and identify every constraint / filter / requirement / emphasized phrase, (2) walk its previous answer item by item with KEEP / DROP / FIX, (3) add anything required-but-missing, (4) output the clean revised answer top to bottom — no preamble, no defect list, no meta-commentary. Override via `selfRecheck.prompt`.
 
-**Two-stage flow (default):**
-- Stage 1 calls the model with `defectsPrompt` — up to 7 concrete defects, one line each in the form `<where>: <wrong> → <should be>`, or the exact string `no defects found`.
-- Stage 2 calls the model with `correctedPrompt` — a *minimal patch*, one bullet per defect, no full rewrite and no restated sections. Skipped if stage 1 said `no defects found`.
-- Each stage renders as its own muted block. A `opus-pack:recheck:completed` event is emitted at the end of each terminal stage (`no-defects` / `corrected` / `legacy` / `failed`).
-- Legacy single-stage flow: set `twoStage: false`, or provide a non-empty `prompt`.
+A `opus-pack:recheck:completed` event fires on the `agent_end` of the recheck turn so coordinating extensions (plan-mode) can re-drive their flow post-recheck. Recursion-safe: an `inRecheckTurn` flag is cleared on the next `agent_end`, so the recheck turn itself never triggers another.
 
-**Adaptive trigger** (`selfRecheck.adaptiveTrigger.enabled`, off by default): cheap heuristic gates that run before firing — skips on ack-only user messages (`skipIfAckOnly` regex, default covers RU+EN), short factual Qs (`skipIfFactualAsk`), turns without tool use or code (`requireToolUseOrCode`), low-structure assistant output (`requireStructureScore` — fenced code / headings / tables / numbered or bulleted lists / em-dash definition lists / file paths / ≥3 inline code spans each +1 point), and bursts that violate `cooldownUserTurns` between auto-fires. `longAnswerBypass` (default 2000 chars) lets answers over that length bypass the structure / tool-use gates — a 2-screen prose answer is worth rechecking on its own merit. Ack/factual-ask regexes and the cooldown still apply regardless of length.
+**Plan-mode coordination:** while a recheck is in flight or about to fire, plan-mode defers its "Execute / Refine / Stay" dialog. The dialog is re-driven via the `opus-pack:recheck:completed` event, so the user decides on the post-recheck plan.
 
-**Classifier** (`selfRecheck.classifier`, off by default): optional YES/NO gate that calls the currently active model via `completeSimple` with a short classifier prompt. Cached per session by sha256(answer). Fails open — timeout, unparsed reply, or exception all return fire=true so a wedged classifier cannot silently suppress recheck. Adds one extra API call per otherwise-fireable turn.
-
-**Plan-mode coordination:** while a recheck is running or about to fire, plan-mode defers its "Execute / Refine / Stay" dialog. The dialog is re-driven via the `opus-pack:recheck:completed` event, so the user decides on the post-recheck plan.
-
-- **Slash:** `/recheck status|on|off|now|skip`. `now` bypasses every gate (model match, cap, adaptive, classifier); `skip` suppresses the next auto-fire one-shot; `status` prints mode, stage, adaptive/classifier state, cap usage, cooldown counter, and last decision.
+- **Slash:** `/recheck status|on|off|now|skip`. `now` bypasses model match and cap; `skip` suppresses the next auto-fire one-shot; `status` prints in-flight flag, cap usage, and last decision.
 
 ---
 
