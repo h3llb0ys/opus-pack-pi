@@ -39,8 +39,11 @@ import {
 	matchesAny,
 	lastAssistantText,
 	lastAssistantTextLength,
+	DEFAULT_ADAPTIVE,
 	type SelfRecheckConfig,
 } from "../lib/self-recheck-state.js";
+import { shouldFireAdaptive } from "../lib/self-recheck-adaptive.js";
+import { classifyShouldFire, resetClassifierCache } from "../lib/self-recheck-classifier.js";
 
 // Exact-match on the whole trimmed reply — avoids false positives when a
 // model writes "no defects found in section 2" as part of a longer answer.
@@ -95,9 +98,21 @@ const DEFAULT_CONFIG: SelfRecheckConfig = {
 	minAssistantChars: 200,
 	maxPerSession: 0,
 	twoStage: true,
+	classifier: false,
+	adaptiveTrigger: { ...DEFAULT_ADAPTIVE },
 };
 
-const loadConfig = (): SelfRecheckConfig => loadOpusPackSection("selfRecheck", DEFAULT_CONFIG);
+// loadOpusPackSection does a shallow merge, but `adaptiveTrigger` is a
+// nested object — without a second-level merge a user who only sets
+// `adaptiveTrigger.enabled = true` would wipe every other field. Merge
+// explicitly here.
+const loadConfig = (): SelfRecheckConfig => {
+	const cfg = loadOpusPackSection("selfRecheck", DEFAULT_CONFIG);
+	return {
+		...cfg,
+		adaptiveTrigger: { ...DEFAULT_ADAPTIVE, ...(cfg.adaptiveTrigger ?? {}) },
+	};
+};
 
 // Use two-stage when enabled AND the user didn't override with a custom single-stage prompt.
 const useTwoStage = (cfg: SelfRecheckConfig): boolean => {
@@ -117,6 +132,7 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_start", async (_event, _ctx) => {
 		resetRecheckState();
+		resetClassifierCache();
 	});
 
 	pi.on("agent_end", async (event, ctx) => {
@@ -172,6 +188,13 @@ export default function (pi: ExtensionAPI) {
 		}
 
 		// --- Initial firing decision --------------------------------------
+		// This branch only runs on non-recheck user turns. Count it as a
+		// passed user turn for cooldown purposes; on a successful fire we
+		// reset the counter to 0 below.
+		if (recheckState.turnsSinceLastFire < Number.MAX_SAFE_INTEGER) {
+			recheckState.turnsSinceLastFire++;
+		}
+
 		if (recheckState.pausedByUser) {
 			recheckState.lastDecision = "paused";
 			return;
@@ -202,11 +225,29 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 
+		// --- Adaptive gate (heuristic, no network) -----------------------
+		const adaptive = shouldFireAdaptive(event, cfg.adaptiveTrigger, { forced: recheckState.forceNext });
+		if (!adaptive.fire) {
+			recheckState.lastDecision = adaptive.reason;
+			return;
+		}
+
+		// --- Classifier gate (optional LLM yes/no) -----------------------
+		if (cfg.classifier && !recheckState.forceNext) {
+			const assistantText = lastAssistantText(event.messages ?? []);
+			const cls = await classifyShouldFire(ctx.model, assistantText);
+			if (!cls.fire) {
+				recheckState.lastDecision = cls.reason;
+				return;
+			}
+		}
+
 		// Fire. Mark state BEFORE the call so any synchronous observer sees it.
 		recheckState.inRecheckTurn = true;
 		const wasForced = recheckState.forceNext;
 		recheckState.forceNext = false;
 		recheckState.countThisSession++;
+		recheckState.turnsSinceLastFire = 0;
 
 		const twoStage = useTwoStage(cfg);
 		const firstPrompt = twoStage ? cfg.defectsPrompt : cfg.prompt;
@@ -237,6 +278,9 @@ export default function (pi: ExtensionAPI) {
 				const modelId = ctx.model?.id ?? "(no model)";
 				const matchNow = modelId !== "(no model)" && matchesAny(modelId, cfg.models);
 				const mode = useTwoStage(cfg) ? "two-stage (defects + corrected)" : "single-stage";
+				const cooldownTxt = recheckState.turnsSinceLastFire >= Number.MAX_SAFE_INTEGER
+					? "∞ (never fired)"
+					: String(recheckState.turnsSinceLastFire);
 				ctx.ui.notify([
 					"═ self-recheck status ═",
 					`enabled:        ${cfg.enabled}`,
@@ -247,6 +291,8 @@ export default function (pi: ExtensionAPI) {
 					`would fire:     ${matchNow ? "yes" : "no"}  (globs: ${cfg.models.join(", ") || "(none)"})`,
 					`min chars:      ${cfg.minAssistantChars}`,
 					`cap/session:    ${cfg.maxPerSession || "∞"}   used: ${recheckState.countThisSession}`,
+					`adaptive:       ${cfg.adaptiveTrigger.enabled ? "on" : "off"}   turns since last fire: ${cooldownTxt}`,
+					`classifier:     ${cfg.classifier ? "on" : "off"}`,
 					`pending flags:  ${recheckState.forceNext ? "force-next " : ""}${recheckState.skipNext ? "skip-next " : ""}${(recheckState.forceNext || recheckState.skipNext) ? "" : "(none)"}`,
 					`last decision:  ${recheckState.lastDecision || "(none yet)"}`,
 				].join("\n"), "info");

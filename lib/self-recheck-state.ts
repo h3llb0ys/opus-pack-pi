@@ -10,6 +10,24 @@ import { minimatch } from "minimatch";
 
 export type RecheckStage = "none" | "defects" | "corrected";
 
+export interface AdaptiveTriggerConfig {
+	enabled: boolean;
+	requireStructureScore: number;   // 0 = disabled
+	requireToolUseOrCode: boolean;
+	cooldownUserTurns: number;       // 0 = disabled
+	skipIfAckOnly: string;           // regex, empty string = disabled
+	skipIfFactualAsk: string;        // regex, empty string = disabled
+}
+
+export const DEFAULT_ADAPTIVE: AdaptiveTriggerConfig = {
+	enabled: false,
+	requireStructureScore: 2,
+	requireToolUseOrCode: true,
+	cooldownUserTurns: 2,
+	skipIfAckOnly: "^\\s*(да|нет|ок|окей|понял(а)?|спасибо|норм|yes|no|ok|okay|thanks|thx|got it)[.!?]*\\s*$",
+	skipIfFactualAsk: "^\\s*(что|какой|какая|какое|какие|покажи|выведи|what|which|show|list|when|where)\\b",
+};
+
 export interface SelfRecheckConfig {
 	enabled: boolean;
 	models: string[];
@@ -19,6 +37,8 @@ export interface SelfRecheckConfig {
 	minAssistantChars: number;
 	maxPerSession: number;
 	twoStage: boolean;
+	classifier: boolean;      // LLM yes/no gate on same active model
+	adaptiveTrigger: AdaptiveTriggerConfig;
 }
 
 export const recheckState = {
@@ -29,6 +49,10 @@ export const recheckState = {
 	skipNext: false,
 	countThisSession: 0,
 	lastDecision: "",
+	// Cooldown: turns elapsed since last auto-fire. Starts at a large value
+	// so the first turn is never blocked by cooldown. Reset to 0 on fire,
+	// incremented on every non-recheck agent_end.
+	turnsSinceLastFire: Number.MAX_SAFE_INTEGER,
 };
 
 export function resetRecheckState(): void {
@@ -39,6 +63,7 @@ export function resetRecheckState(): void {
 	recheckState.skipNext = false;
 	recheckState.countThisSession = 0;
 	recheckState.lastDecision = "";
+	recheckState.turnsSinceLastFire = Number.MAX_SAFE_INTEGER;
 }
 
 export function matchesAny(modelId: string, globs: string[]): boolean {
@@ -63,6 +88,24 @@ export function lastAssistantTextLength(messages: any[]): number {
 		return 0;
 	}
 	return 0;
+}
+
+export function lastUserText(messages: any[]): string {
+	for (let i = messages.length - 1; i >= 0; i--) {
+		const m = messages[i];
+		if (!m || m.role !== "user") continue;
+		const content = m.content;
+		if (typeof content === "string") return content;
+		if (Array.isArray(content)) {
+			let out = "";
+			for (const part of content) {
+				if (part && part.type === "text" && typeof part.text === "string") out += part.text;
+			}
+			return out;
+		}
+		return "";
+	}
+	return "";
 }
 
 export function lastAssistantText(messages: any[]): string {
