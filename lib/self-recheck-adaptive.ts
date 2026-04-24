@@ -27,12 +27,19 @@ const compileSafe = (pattern: string): RegExp | null => {
 /**
  * Structural complexity score for an assistant message.
  *
- * Signals (each worth 1 point, max capped implicitly by the input):
- *   +1  fenced code block  ```...```
- *   +1  numbered or bulleted list with at least 3 items
- *   +1  markdown table (has header separator `|---|`)
- *   +1  file path reference (looks like `foo/bar.ts` or `./x/y`)
- *   +1  inline code span run (3+ backticked spans — signals heavy technical content)
+ * Each distinct signal contributes 1 point; counts accumulate across the
+ * full set below. Broadened to cover Cyrillic / GLM-style markdown that
+ * the original set (built for CC-style replies) missed.
+ *
+ * Signals:
+ *   +1  fenced code block  ```…```  (≥1 complete block = ≥2 opening fences)
+ *   +1  markdown heading   `^#{1,6} …`  (≥1, strong signal of structured prose)
+ *   +1  markdown table     (has `|---|` separator row)
+ *   +1  numbered list      `N. …` or `N) …`, at least 3 items
+ *   +1  bulleted list      `- … | * … | • … | ● … | ▪ …`, at least 3 items
+ *   +1  em-dash definition-list  `**word** — …`, at least 2 items
+ *   +1  file path reference  (e.g. `foo/bar.ts`, `./x.py`), at least 1
+ *   +1  inline code run    (≥3 backticked spans)
  */
 export function scoreStructure(text: string): number {
 	if (!text) return 0;
@@ -42,16 +49,23 @@ export function scoreStructure(text: string): number {
 	const fences = text.match(/^```/gm);
 	if (fences && fences.length >= 2) score += 1;
 
+	// Markdown headings — any level, 1+ instance.
+	if (/^#{1,6}\s+\S/m.test(text)) score += 1;
+
 	// Markdown table separator row.
 	if (/^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/m.test(text)) score += 1;
 
-	// Numbered list: at least 3 lines matching `N. ...`.
-	const numbered = text.match(/^\s*\d+\.\s+\S/gm);
+	// Numbered list: `N.` or `N)`.
+	const numbered = text.match(/^\s*\d+[.)]\s+\S/gm);
 	if (numbered && numbered.length >= 3) score += 1;
 
-	// Bulleted list: at least 3 lines matching `- ` or `* `.
-	const bulleted = text.match(/^\s*[-*]\s+\S/gm);
+	// Bulleted list: ASCII dash / asterisk or unicode bullet characters.
+	const bulleted = text.match(/^\s*[-*•●▪–—]\s+\S/gm);
 	if (bulleted && bulleted.length >= 3) score += 1;
+
+	// Em-dash definition list: `**label** — …` / `**label** - …` (≥2 items).
+	const defList = text.match(/^\s*\*\*[^*\n]{1,80}\*\*\s+[—–-]\s+\S/gm);
+	if (defList && defList.length >= 2) score += 1;
 
 	// File path references — e.g. foo/bar.ts, src/a.rs, ./x.py.
 	const paths = text.match(/(?:^|[\s`(])\.{0,2}\/?[\w.-]+\/[\w./-]+\.[a-z]{1,5}(?=\s|`|$|[),.])/gim);
@@ -127,6 +141,9 @@ export function shouldFireAdaptive(
 	const userText = lastUserText(messages);
 	const assistantText = lastAssistantText(messages);
 
+	// Ack / factual-ask regexes and cooldown apply even to long answers —
+	// a short follow-up like "ок, теперь то же для Y" is still user intent
+	// to move on, not to second-guess the previous reply.
 	const ack = compileSafe(cfg.skipIfAckOnly);
 	if (ack && ack.test(userText)) return { fire: false, reason: "skip: user ack-only" };
 
@@ -137,16 +154,28 @@ export function shouldFireAdaptive(
 		return { fire: false, reason: `cooldown (${recheckState.turnsSinceLastFire}/${cfg.cooldownUserTurns})` };
 	}
 
-	if (cfg.requireToolUseOrCode && !hasToolUseOrCode(messages)) {
+	// A very long prose answer is worth rechecking on its own merit, even
+	// if it has no tool calls and few structural markers. This bypasses
+	// both `requireToolUseOrCode` and `requireStructureScore` when the
+	// assistant text exceeds `longAnswerBypass`. Set to 0 in settings to
+	// disable the bypass and keep the strict gates active on any length.
+	const longAnswer = cfg.longAnswerBypass > 0 && assistantText.length >= cfg.longAnswerBypass;
+
+	if (!longAnswer && cfg.requireToolUseOrCode && !hasToolUseOrCode(messages)) {
 		return { fire: false, reason: "skip: no tool use or code" };
 	}
 
-	if (cfg.requireStructureScore > 0) {
+	if (!longAnswer && cfg.requireStructureScore > 0) {
 		const score = scoreStructure(assistantText);
 		if (score < cfg.requireStructureScore) {
 			return { fire: false, reason: `skip: structure ${score}<${cfg.requireStructureScore}` };
 		}
 	}
 
-	return { fire: true, reason: "adaptive pass" };
+	return {
+		fire: true,
+		reason: longAnswer
+			? `adaptive pass (long-answer bypass, ${assistantText.length}c)`
+			: "adaptive pass",
+	};
 }

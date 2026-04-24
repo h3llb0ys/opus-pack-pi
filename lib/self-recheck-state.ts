@@ -17,6 +17,7 @@ export interface AdaptiveTriggerConfig {
 	cooldownUserTurns: number;       // 0 = disabled
 	skipIfAckOnly: string;           // regex, empty string = disabled
 	skipIfFactualAsk: string;        // regex, empty string = disabled
+	longAnswerBypass: number;        // 0 = disabled; otherwise, answers ≥ N chars bypass structure/tool gates
 }
 
 export const DEFAULT_ADAPTIVE: AdaptiveTriggerConfig = {
@@ -26,6 +27,7 @@ export const DEFAULT_ADAPTIVE: AdaptiveTriggerConfig = {
 	cooldownUserTurns: 2,
 	skipIfAckOnly: "^\\s*(да|нет|ок|окей|понял(а)?|спасибо|норм|yes|no|ok|okay|thanks|thx|got it)[.!?]*\\s*$",
 	skipIfFactualAsk: "^\\s*(что|какой|какая|какое|какие|покажи|выведи|what|which|show|list|when|where)\\b",
+	longAnswerBypass: 2000,
 };
 
 export interface SelfRecheckConfig {

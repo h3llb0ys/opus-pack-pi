@@ -108,11 +108,12 @@
       "classifier": false,
       "_classifier_comment": "When true, before firing self-recheck, ask the currently active model a single YES/NO question ('Should this answer get a second pass?') and skip on NO. Cached by answer hash per session. Failures/timeouts fall back to firing so a broken classifier can't silently disable self-recheck. Adds one short API round-trip per otherwise-fireable turn — off by default.",
       "adaptiveTrigger": {
-        "_comment": "Heuristic gate — skip cheap/trivial turns without an LLM call. Disabled by default (fires on every long turn that matches `models`). Turn on to cut recheck spam on Q&A, acks, and exploration turns.",
+        "_comment": "Heuristic gate — skip cheap/trivial turns without an LLM call. Disabled by default (fires on every long turn that matches `models`). Turn on to cut recheck spam on Q&A, acks, and exploration turns. `longAnswerBypass` > 0 lets answers over N chars bypass the structure / tool-use gates — a 2-screen prose answer is worth rechecking on its own merit, even without code. Ack/factual-ask regexes and the cooldown still apply regardless of length. Structure signals counted: fenced code, headings, tables, numbered/bulleted lists (≥3 items), em-dash definition lists (≥2 `**label** — …`), file paths, ≥3 inline code spans.",
         "enabled": false,
         "requireStructureScore": 2,
         "requireToolUseOrCode": true,
         "cooldownUserTurns": 2,
+        "longAnswerBypass": 2000,
         "skipIfAckOnly": "^\\s*(да|нет|ок|окей|понял(а)?|спасибо|норм|yes|no|ok|okay|thanks|thx|got it)[.!?]*\\s*$",
         "skipIfFactualAsk": "^\\s*(что|какой|какая|какое|какие|покажи|выведи|what|which|show|list|when|where)\\b"
       },

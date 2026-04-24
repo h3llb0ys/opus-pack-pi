@@ -6,6 +6,10 @@ Reverse-chronological. Versions track git tags. Format inspired by [Keep a Chang
 
 ### Changed
 
+- **Self-recheck adaptive scoring is less Anglophone-biased.** The structure-score signal set was built against English CC-style replies and under-counted Cyrillic markdown prose — GLM answers with `### Заголовок` / `**label** — …` / unicode-bullet lists routinely scored 0 and got skipped by `requireStructureScore`. Added four signals: markdown headings `^#{1,6} …`, em-dash definition lists `**label** — …`, unicode bullet characters (`•`, `●`, `▪`, `–`, `—`), and numbered lists using `)` instead of `.`. New optional `adaptiveTrigger.longAnswerBypass` field (default 2000 chars) lets very long prose answers bypass the structure / `requireToolUseOrCode` gates — a 2-screen answer is worth a recheck regardless of markdown density. Ack/factual-ask regexes and the cooldown still apply regardless of length. Set `longAnswerBypass: 0` to disable the bypass entirely.
+
+### Changed
+
 - **Self-recheck is now a side-channel pass.** Previously the extension injected its critique as real assistant turns via `sendUserMessage`, which polluted the transcript with two extra turns, rendered in full colour, and counted against the context window of every subsequent turn. Recheck now calls `completeSimple(ctx.model, …)` directly and renders the defect list and patch via `ctx.ui.notify(..., "info")` — the same muted style the Session Summary panel uses. Recheck output no longer enters the session message history, so context usage is unaffected, compaction can't replay recheck content as "real conversation", and the recheck itself can't trigger another recheck by definition. Fire-and-forget: the main agent loop returns immediately; notifications appear as each stage resolves. The `opus-pack:recheck:completed` event (used by plan-mode) fires unchanged, with outcomes `no-defects` / `corrected` / `legacy` / `failed`.
 
 ### Added
