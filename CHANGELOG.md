@@ -4,6 +4,10 @@ Reverse-chronological. Versions track git tags. Format inspired by [Keep a Chang
 
 ## [Unreleased]
 
+### Changed
+
+- **Self-recheck is now a side-channel pass.** Previously the extension injected its critique as real assistant turns via `sendUserMessage`, which polluted the transcript with two extra turns, rendered in full colour, and counted against the context window of every subsequent turn. Recheck now calls `completeSimple(ctx.model, …)` directly and renders the defect list and patch via `ctx.ui.notify(..., "info")` — the same muted style the Session Summary panel uses. Recheck output no longer enters the session message history, so context usage is unaffected, compaction can't replay recheck content as "real conversation", and the recheck itself can't trigger another recheck by definition. Fire-and-forget: the main agent loop returns immediately; notifications appear as each stage resolves. The `opus-pack:recheck:completed` event (used by plan-mode) fires unchanged, with outcomes `no-defects` / `corrected` / `legacy` / `failed`.
+
 ### Added
 
 - **Self-recheck adaptive trigger + optional classifier.** `selfRecheck.adaptiveTrigger` (off by default) adds four heuristic gates that run before a recheck fires: regex skip for ack-only or short factual user messages, cooldown of N user-turns between auto-fires, a "structure score" threshold on the assistant output (code blocks, long lists, tables, file paths), and a "require tool use or code" check. Tuning fields: `requireStructureScore`, `requireToolUseOrCode`, `cooldownUserTurns`, `skipIfAckOnly`, `skipIfFactualAsk`. `selfRecheck.classifier` (off by default) adds an optional final YES/NO gate that calls the currently active model with a short classifier prompt; results are cached per session by answer hash, and any failure / timeout / unparsed reply falls back to firing so a broken classifier can't silently disable recheck. `/recheck now` still bypasses every gate.

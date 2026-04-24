@@ -115,9 +115,10 @@
 ### Self-recheck (weak-model second pass)
 
 - When `selfRecheck.enabled` and the active model id matches a glob in `selfRecheck.models` (e.g. `glm-*`), an automatic critique fires after `agent_end`.
-- **Two-stage by default:** stage 1 asks the model for at most 7 real defects (one-line `<where>: <wrong> → <should be>`); stage 2 emits a *minimal patch* — one bullet per defect, no full rewrite, no restated sections. Each stage is a separate assistant message. If stage 1 returns `no defects found`, stage 2 is skipped.
-- Recursion-safe: the recheck itself never triggers another recheck.
-- In plan mode, the "what next?" dialog is deferred until recheck completes — weak-model plans benefit from the rewrite before the user decides Execute/Refine/Stay.
+- **Side-channel rendering.** Recheck output is emitted via `ctx.ui.notify(..., "info")` — the same muted style as the Session Summary panel. It does NOT land in the session message history, so it doesn't bloat the context window, can't be replayed through compaction, and can't trigger its own recursion.
+- **Two-stage by default:** stage 1 asks the model for at most 7 real defects (one-line `<where>: <wrong> → <should be>`); stage 2 emits a *minimal patch* — one bullet per defect, no full rewrite, no restated sections. Each stage renders as its own muted block. If stage 1 returns `no defects found`, stage 2 is skipped.
+- **Fire-and-forget.** The recheck runs asynchronously after `agent_end` returns; the main agent loop is never blocked on recheck network latency.
+- In plan mode, the "what next?" dialog is deferred until recheck completes — weak-model plans benefit from seeing the defects + patch beside the draft before the user decides Execute/Refine/Stay.
 - `/recheck status | on | off | now | skip` — `now` forces one pass on the next turn regardless of model match, cap, adaptive gate, or classifier; `skip` suppresses the next auto-fire; `status` shows the current stage, adaptive/classifier flags, and turns-since-last-fire.
 - **Adaptive trigger** (`selfRecheck.adaptiveTrigger.enabled`): when on, recheck skips turns that are unlikely to benefit — short acks, simple factual Qs, low-structure answers, turns without tool use or code, and bursts that violate a cooldown of N user-turns. Configurable via regex (`skipIfAckOnly`, `skipIfFactualAsk`), structure score threshold, tool-use requirement, and `cooldownUserTurns`.
 - **Classifier** (`selfRecheck.classifier`): optional final YES/NO gate that asks the active model whether its own previous answer warrants a recheck. Cached by answer hash per session. Fails open — any timeout or unparsed reply still fires. One extra short API call per otherwise-fireable turn, so off by default.

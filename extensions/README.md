@@ -187,10 +187,12 @@ Review agent changes interactively.
 
 Automatic second pass for weak models. Fires after `agent_end` when the active model id matches one of `selfRecheck.models` (glob, default `glm-*`, `*qwen*`, `deepseek*`) and the assistant text is at least `minAssistantChars` long.
 
+**Side-channel rendering.** Recheck does NOT send a real assistant turn. It calls `completeSimple(ctx.model, …)` directly against a minimal scratch context (the last user/assistant exchange + the stage prompt) and renders the result via `ctx.ui.notify(text, "info")`, matching the muted style of the Session Summary panel. The output never enters session history, so it doesn't bloat the context window, can't be replayed through compaction, and can't recurse into itself. Runs fire-and-forget after `agent_end` returns.
+
 **Two-stage flow (default):**
-- Stage 1 injects `defectsPrompt` — model outputs up to 7 concrete defects, one line each in the form `<where>: <wrong> → <should be>`, or the exact string `no defects found`.
-- Stage 2 injects `correctedPrompt` — model emits a *minimal patch*, one bullet per defect, no full rewrite and no restated sections. Skipped if stage 1 said `no defects found`.
-- Each stage is a separate assistant message so defects and the fix stay visually distinct. A `opus-pack:recheck:completed` event is emitted at the end of each terminal stage (`no-defects` / `corrected` / `legacy` / `failed`).
+- Stage 1 calls the model with `defectsPrompt` — up to 7 concrete defects, one line each in the form `<where>: <wrong> → <should be>`, or the exact string `no defects found`.
+- Stage 2 calls the model with `correctedPrompt` — a *minimal patch*, one bullet per defect, no full rewrite and no restated sections. Skipped if stage 1 said `no defects found`.
+- Each stage renders as its own muted block. A `opus-pack:recheck:completed` event is emitted at the end of each terminal stage (`no-defects` / `corrected` / `legacy` / `failed`).
 - Legacy single-stage flow: set `twoStage: false`, or provide a non-empty `prompt`.
 
 **Adaptive trigger** (`selfRecheck.adaptiveTrigger.enabled`, off by default): cheap heuristic gates that run before firing — skips on ack-only user messages (`skipIfAckOnly` regex, default covers RU+EN), short factual Qs (`skipIfFactualAsk`), turns without tool use or code (`requireToolUseOrCode`), low-structure assistant output (`requireStructureScore` — code blocks / tables / long lists / file paths / inline code spans each +1 point), and bursts that violate `cooldownUserTurns` between auto-fires.
