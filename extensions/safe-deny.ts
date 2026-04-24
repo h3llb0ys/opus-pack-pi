@@ -34,8 +34,13 @@ const CHAIN_OPS = ["||", "&&", ";", "|"];
 
 const tokenizeCommand = (cmd: string): TokenizeResult => {
 	// Refuse to parse confusing shell constructs — mark dirty → paranoid path.
-	if (/\$\(|\`|<<-?\s*\w/.test(cmd)) {
-		return { segments: null, dirty: true, reason: "subshell or heredoc" };
+	// Covers: command substitution `$(...)` / `` `...` ``, heredoc `<<EOF`,
+	// and process substitution `<(...)` / `>(...)`. The latter is critical
+	// because pi runs commands through `sh -c`, so `bash <(curl …)` would
+	// pass our argv parser as a single literal arg yet be expanded by the
+	// shell into a real subprocess invocation.
+	if (/\$\(|`|<<-?\s*\w|[<>]\(/.test(cmd)) {
+		return { segments: null, dirty: true, reason: "subshell, heredoc or process substitution" };
 	}
 	const segments: Segment[] = [];
 	let buf = "";

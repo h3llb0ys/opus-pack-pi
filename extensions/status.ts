@@ -9,6 +9,7 @@
  */
 
 import { exec } from "node:child_process";
+import { basename } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { isExtensionDisabled, loadOpusPackSection } from "../lib/settings.js";
 
@@ -41,11 +42,6 @@ const runShellLine = (cfg: ShellStatusConfig, cwd: string): Promise<string> =>
 
 const renderFooter = (ext: number, skills: number, mcp: number) =>
 	`ext:${ext} skills:${skills} mcp:${mcp}`;
-
-const basename = (p: string) => {
-	const i = p.lastIndexOf("/");
-	return i >= 0 ? p.slice(i + 1) : p;
-};
 
 export default function (pi: ExtensionAPI) {
 	if (isExtensionDisabled("status")) return;

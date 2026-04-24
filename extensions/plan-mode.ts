@@ -274,7 +274,9 @@ function extractPlanSteps(message: string): string[] {
 	const headerMatch = message.match(/\*{0,2}Plan:\*{0,2}\s*\n/i);
 	if (!headerMatch) return steps;
 	const planSection = message.slice(message.indexOf(headerMatch[0]) + headerMatch[0].length);
-	for (const match of planSection.matchAll(/^\s*(\d+)[.)]\s+\*{0,2}([^*\n]+)/gm)) {
+	// Numbered step lines: ASCII `1.` / `1)` and fullwidth `1．` / `1）`
+	// (common when the model reflects Japanese/Chinese punctuation back).
+	for (const match of planSection.matchAll(/^\s*(\d+)[.)．）]\s+\*{0,2}([^*\n]+)/gm)) {
 		const text = match[2].trim().replace(/\*{1,2}$/, "").trim();
 		if (text.length > 5) steps.push(text.slice(0, 80));
 	}
